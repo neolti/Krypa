@@ -45,6 +45,9 @@ impl Gpu {
         .map_err(|e| format!("request_adapter: {e}"))?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("krypa"),
+            // The simulator reports lower limits than wgpu's defaults (for example 15 inter-stage
+            // variables, not 16); egui needs nothing special, so ask for what the adapter has.
+            required_limits: adapter.limits(),
             ..Default::default()
         }))
         .map_err(|e| format!("request_device: {e}"))?;
