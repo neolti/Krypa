@@ -1,6 +1,6 @@
 use url::Url;
 
-use crate::app::is_plain_web_url;
+use crate::app::is_plain_https_url;
 use crate::manifest::ManifestIcon;
 
 /// Largest number of `sizes` tokens read per icon.
@@ -86,7 +86,7 @@ impl Icon {
     /// plain `http:` are all dropped), credentials, or a `purpose` with no known token.
     pub(crate) fn from_raw(manifest_url: &Url, raw: &ManifestIcon) -> Option<Self> {
         let src = manifest_url.join(raw.src.as_deref()?.trim()).ok()?;
-        if src.scheme() != "https" || !is_plain_web_url(&src) {
+        if !is_plain_https_url(&src) {
             return None;
         }
         Some(Self {

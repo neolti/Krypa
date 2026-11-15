@@ -575,6 +575,39 @@ mod tests {
         assert!(p.app.icons().iter().all(|i| i.src().scheme() == "https"));
     }
 
+    /// Why: owner decision, installed apps are https-only. "Add to Krypa" on the harness's
+    /// plain-http sample must show the refusal, never a dialog, and must leave nothing to
+    /// confirm; the https sample next to it still installs end to end.
+    #[test]
+    fn add_to_krypa_on_a_plain_http_page_shows_the_refusal_not_a_dialog() {
+        use krypa_core::InstallRefusal;
+        let mut core = Core::new().unwrap();
+        let t0 = Instant::now();
+        core.handle_intents(vec![nav("http://insecure.test/")], t0);
+        run(&mut core, t0);
+        let id = core.state.foreground.unwrap();
+        core.handle_intents(vec![Intent::AddToKrypa(id)], t0);
+        run(&mut core, t0);
+        assert_eq!(core.state.install_refusal, Some(InstallRefusal::NotHttps));
+        assert!(core.state.install_prompt.is_none());
+        assert!(core.state.installed_apps.is_empty());
+    }
+
+    /// Why: a certificate-error page never commits, so it has nothing to install; the
+    /// refusal must not leave a dialog behind either.
+    #[test]
+    fn add_to_krypa_on_a_page_that_failed_its_certificate_check_installs_nothing() {
+        let mut core = Core::new().unwrap();
+        let t0 = Instant::now();
+        core.handle_intents(vec![nav("https://badcert.test/")], t0);
+        run(&mut core, t0);
+        let id = core.state.foreground.unwrap();
+        core.handle_intents(vec![Intent::AddToKrypa(id)], t0);
+        run(&mut core, t0);
+        assert!(core.state.install_prompt.is_none());
+        assert!(core.state.installed_apps.is_empty());
+    }
+
     /// Why: a hostile manifest name may only ever be displayed after sanitizing.
     #[test]
     fn a_hostile_manifest_name_is_sanitized_before_the_user_sees_it() {

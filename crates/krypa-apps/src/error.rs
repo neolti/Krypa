@@ -21,11 +21,12 @@ pub enum ManifestError {
     /// The manifest is valid JSON but not a JSON object.
     #[error("manifest is not a JSON object")]
     NotAnObject,
-    /// The document URL is not an `http(s)` URL with a host and no credentials.
-    #[error("document URL must be http(s) with a host and no credentials")]
+    /// The document URL is not an `https` URL with a host and no credentials. Plain
+    /// `http` sites cannot be installed.
+    #[error("document URL must be https with a host and no credentials")]
     UnsupportedDocumentUrl,
-    /// The manifest URL is not an `http(s)` URL with a host and no credentials.
-    #[error("manifest URL must be http(s) with a host and no credentials")]
+    /// The manifest URL is not an `https` URL with a host and no credentials.
+    #[error("manifest URL must be https with a host and no credentials")]
     UnsupportedManifestUrl,
 }
 

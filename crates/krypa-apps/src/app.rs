@@ -53,8 +53,8 @@ pub struct StoredIcon {
 }
 
 /// An installed web app. Every value has been validated: `id`, `start_url` and `scope`
-/// are `http(s)` URLs of the same origin as the page it was installed from, `start_url`
-/// lies inside `scope`, and the name is free of control and bidi characters.
+/// are `https` URLs of the same origin as the page it was installed from (plain `http`
+/// sites cannot be installed), `start_url` lies inside `scope`, and the name is free of control and bidi characters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledApp {
     id: Url,
@@ -76,17 +76,17 @@ impl InstalledApp {
     ///
     /// # Errors
     /// [`ManifestError::UnsupportedDocumentUrl`] / [`ManifestError::UnsupportedManifestUrl`]
-    /// when either URL is not `http(s)` with a host and no credentials. Bad manifest
+    /// when either URL is not `https` with a host and no credentials. Bad manifest
     /// members never fail; they fall back to defaults.
     pub fn from_manifest(
         document_url: &Url,
         manifest_url: &Url,
         manifest: &Manifest,
     ) -> Result<Self, ManifestError> {
-        if !is_plain_web_url(document_url) {
+        if !is_plain_https_url(document_url) {
             return Err(ManifestError::UnsupportedDocumentUrl);
         }
-        if !is_plain_web_url(manifest_url) {
+        if !is_plain_https_url(manifest_url) {
             return Err(ManifestError::UnsupportedManifestUrl);
         }
         let start_url = resolve_start_url(document_url, manifest_url, manifest);
@@ -119,10 +119,10 @@ impl InstalledApp {
     /// sanitized; if nothing is left the host name is used.
     ///
     /// # Errors
-    /// [`ManifestError::UnsupportedDocumentUrl`] when `document_url` is not `http(s)`
+    /// [`ManifestError::UnsupportedDocumentUrl`] when `document_url` is not `https`
     /// with a host and no credentials.
     pub fn manual(document_url: &Url, title: Option<&str>) -> Result<Self, ManifestError> {
-        if !is_plain_web_url(document_url) {
+        if !is_plain_https_url(document_url) {
             return Err(ManifestError::UnsupportedDocumentUrl);
         }
         let start_url = without_fragment(document_url);
@@ -143,7 +143,7 @@ impl InstalledApp {
     }
 
     /// Rebuilds an app from its stored fields, enforcing the same invariants as
-    /// [`InstalledApp::from_manifest`]: `id`, `start_url` and `scope` are plain `http(s)`
+    /// [`InstalledApp::from_manifest`]: `id`, `start_url` and `scope` are plain `https`
     /// URLs (host, no credentials) of one origin; `start_url` lies inside `scope`; `scope`
     /// has no query or fragment and `id` no fragment; the name is non-empty and already
     /// sanitized; icons are plain `https` URLs, at most [`MAX_ICONS`], with valid sizes
@@ -154,9 +154,9 @@ impl InstalledApp {
     /// [`StoredAppError`] naming the first field that violates an invariant.
     pub fn from_stored(stored: StoredApp) -> Result<Self, StoredAppError> {
         let bad = |field| StoredAppError { field };
-        let id = canonical_web_url(&stored.id).ok_or(bad("id"))?;
-        let start_url = canonical_web_url(&stored.start_url).ok_or(bad("start_url"))?;
-        let scope = canonical_web_url(&stored.scope).ok_or(bad("scope"))?;
+        let id = canonical_https_url(&stored.id).ok_or(bad("id"))?;
+        let start_url = canonical_https_url(&stored.start_url).ok_or(bad("start_url"))?;
+        let scope = canonical_https_url(&stored.scope).ok_or(bad("scope"))?;
         if !same_origin(&id, &start_url) || id.fragment().is_some() {
             return Err(bad("id"));
         }
@@ -183,7 +183,7 @@ impl InstalledApp {
                         IconSize::Any => true,
                         IconSize::Px { width, height } => *width > 0 && *height > 0,
                     });
-                let src = canonical_web_url(&i.src).filter(|u| u.scheme() == "https");
+                let src = canonical_https_url(&i.src).filter(|u| u.scheme() == "https");
                 match src {
                     Some(src) if sizes_ok && (p.any || p.maskable || p.monochrome) => Ok(Icon {
                         src,
@@ -338,19 +338,21 @@ fn is_disallowed_char(c: char) -> bool {
         )
 }
 
-/// `http(s)`, has a host, no userinfo.
-pub(crate) fn is_plain_web_url(url: &Url) -> bool {
-    matches!(url.scheme(), "http" | "https")
+/// `https`, has a host, no userinfo. The one place that decides what an installed app's
+/// URLs may be: the manifest, manual and stored paths all go through it, so a plain-`http`
+/// site cannot be installed or reloaded from storage.
+pub(crate) fn is_plain_https_url(url: &Url) -> bool {
+    url.scheme() == "https"
         && url.host_str().is_some()
         && url.username().is_empty()
         && url.password().is_none()
 }
 
-/// Parses `text` as a plain web URL that re-serializes to exactly `text`.
-fn canonical_web_url(text: &str) -> Option<Url> {
+/// Parses `text` as a plain https URL that re-serializes to exactly `text`.
+fn canonical_https_url(text: &str) -> Option<Url> {
     Url::parse(text)
         .ok()
-        .filter(|u| is_plain_web_url(u) && u.as_str() == text)
+        .filter(|u| is_plain_https_url(u) && u.as_str() == text)
 }
 
 fn same_origin(a: &Url, b: &Url) -> bool {
@@ -359,7 +361,7 @@ fn same_origin(a: &Url, b: &Url) -> bool {
 }
 
 fn in_scope(scope: &Url, url: &Url) -> bool {
-    is_plain_web_url(url) && same_origin(scope, url) && url.path().starts_with(scope.path())
+    is_plain_https_url(url) && same_origin(scope, url) && url.path().starts_with(scope.path())
 }
 
 fn without_fragment(url: &Url) -> Url {
@@ -382,7 +384,7 @@ fn present(value: Option<&str>) -> Option<&str> {
 fn resolve_start_url(document_url: &Url, manifest_url: &Url, manifest: &Manifest) -> Url {
     present(manifest.start_url.as_deref())
         .and_then(|s| manifest_url.join(s).ok())
-        .filter(|u| is_plain_web_url(u) && same_origin(u, document_url))
+        .filter(|u| is_plain_https_url(u) && same_origin(u, document_url))
         .unwrap_or_else(|| without_fragment(document_url))
 }
 
@@ -401,7 +403,7 @@ fn default_scope(start_url: &Url) -> Url {
 fn resolve_scope(manifest_url: &Url, manifest: &Manifest, start_url: &Url) -> Url {
     present(manifest.scope.as_deref())
         .and_then(|s| manifest_url.join(s).ok())
-        .filter(|u| is_plain_web_url(u) && same_origin(u, start_url))
+        .filter(|u| is_plain_https_url(u) && same_origin(u, start_url))
         .map(|mut u| {
             u.set_query(None);
             u.set_fragment(None);
@@ -419,7 +421,7 @@ fn resolve_id(manifest: &Manifest, start_url: &Url) -> Url {
     base.set_fragment(None);
     present(manifest.id.as_deref())
         .and_then(|s| base.join(s).ok())
-        .filter(|u| is_plain_web_url(u) && same_origin(u, start_url))
+        .filter(|u| is_plain_https_url(u) && same_origin(u, start_url))
         .map(|u| without_fragment(&u))
         .unwrap_or_else(|| without_fragment(start_url))
 }
@@ -732,6 +734,8 @@ mod tests {
             "blob:https://a.example/1",
             "ftp://a.example/",
             "https://user:pw@a.example/",
+            "http://a.example/",
+            "http://localhost:8080/",
         ] {
             assert_eq!(
                 InstalledApp::from_manifest(&u(bad), &manifest_url(), &m),
@@ -940,8 +944,67 @@ mod tests {
             InstalledApp::from_stored(manual.to_stored()).unwrap(),
             manual
         );
-        let http = InstalledApp::manual(&u("http://plain.example/"), None).unwrap();
-        assert_eq!(InstalledApp::from_stored(http.to_stored()).unwrap(), http);
+    }
+
+    /// Why: owner decision, installed apps are https-only. The rule is one predicate shared
+    /// by the manifest, manual and stored paths, so a plain-http site is refused when it is
+    /// installed and again if a row for it ever reaches storage (old build, tampering). An
+    /// https-only constructor but an http-accepting `from_stored` (or the reverse) is the
+    /// drift this test exists to catch.
+    #[test]
+    fn a_plain_http_site_cannot_be_installed_and_a_stored_http_row_is_refused() {
+        let m = Manifest::parse(RICH).unwrap();
+        for doc in [
+            "http://plain.example/",
+            "http://localhost:8080/",
+            "http://127.0.0.1/",
+        ] {
+            let d = u(doc);
+            let mu = u("https://plain.example/m.json");
+            assert_eq!(
+                InstalledApp::from_manifest(&d, &mu, &m),
+                Err(ManifestError::UnsupportedDocumentUrl),
+                "{doc}"
+            );
+            assert_eq!(
+                InstalledApp::manual(&d, None),
+                Err(ManifestError::UnsupportedDocumentUrl),
+                "{doc}"
+            );
+        }
+        // A manifest fetched over http cannot install an app, even for an https page.
+        assert_eq!(
+            InstalledApp::from_manifest(&doc(), &u("http://app.example/m.json"), &m),
+            Err(ManifestError::UnsupportedManifestUrl)
+        );
+        // A valid stored app with any non-empty subset of id, start_url and scope turned
+        // into its http twin is refused, including the all-http row that is consistent.
+        for mask in 1..8_u8 {
+            let mut s = stored();
+            let http = |v: &str| v.replace("https:", "http:");
+            if mask & 1 != 0 {
+                s.id = http(&s.id);
+            }
+            if mask & 2 != 0 {
+                s.start_url = http(&s.start_url);
+            }
+            if mask & 4 != 0 {
+                s.scope = http(&s.scope);
+            }
+            assert!(InstalledApp::from_stored(s).is_err(), "mask {mask}");
+        }
+    }
+
+    /// Why: a manifest that points at an http id, start_url or scope must not drag the app
+    /// onto http; the https page's own URL is used instead.
+    #[test]
+    fn a_manifest_cannot_make_an_https_page_install_with_http_urls() {
+        let app = install(
+            r#"{"id":"http://app.example/x","start_url":"http://app.example/s","scope":"http://app.example/"}"#,
+        );
+        for url in [app.id(), app.start_url(), app.scope()] {
+            assert_eq!(url.scheme(), "https");
+        }
     }
 
     fn field_of(s: StoredApp) -> &'static str {

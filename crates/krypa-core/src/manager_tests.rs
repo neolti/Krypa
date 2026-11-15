@@ -1306,12 +1306,14 @@ fn losing_the_view_forgets_the_security_state() {
 use krypa_apps::{InstalledApp, MAX_MANIFEST_BYTES};
 use krypa_engine_api::{ManifestFailure, ManifestRequestId, ManifestResult};
 
-use crate::{InstallSource, ManualReason};
+use crate::{InstallRefusal, InstallSource, ManualReason};
 
 fn shop(r: &mut Rig) -> SessionId {
     let a = r.session();
     r.fg(a);
     r.commit(a, "https://shop.example/cart?token=secret");
+    // Only a page the engine confirmed as secure can be installed.
+    report(r, a, ConnectionSecurity::Secure);
     a
 }
 
@@ -1589,6 +1591,82 @@ fn install_needs_a_live_page_the_core_can_name() {
         r.m.request_install(SessionId::new(77)),
         Err(CoreError::UnknownSession(SessionId::new(77)))
     );
+}
+
+fn refusal(out: &Outcome) -> InstallRefusal {
+    assert!(out.commands.is_empty(), "the engine must not be asked");
+    match out.notices.as_slice() {
+        [Notice::InstallRefused { reason, .. }] => *reason,
+        other => panic!("expected one InstallRefused, got {other:?}"),
+    }
+}
+
+/// Why: owner decision, installed apps are https-only. A plain-http page is refused before
+/// the engine is asked for a manifest, so no install dialog can follow, whatever the engine
+/// reports about it (even a bogus "secure").
+#[test]
+fn a_plain_http_page_cannot_be_installed_and_the_engine_is_never_asked() {
+    for security in [
+        None,
+        Some(ConnectionSecurity::Insecure),
+        Some(ConnectionSecurity::Secure),
+    ] {
+        let mut r = Rig::new(2);
+        let a = r.session();
+        r.fg(a);
+        r.commit(a, "http://plain.test/page");
+        if let Some(security) = security {
+            report(&mut r, a, security);
+        }
+        let out = r.m.request_install(a).unwrap();
+        assert_eq!(refusal(&out), InstallRefusal::NotHttps, "{security:?}");
+        // Nothing was left pending that a stray answer could complete.
+        let late = answer(&mut r, a, ManifestRequestId(1), ManifestResult::NotFound);
+        assert_eq!(late, Outcome::default());
+    }
+}
+
+/// Why: an https page with a broken certificate is not a place to create an app that is
+/// later trusted by its URL alone.
+#[test]
+fn an_https_page_with_a_certificate_error_cannot_be_installed() {
+    let mut r = Rig::new(2);
+    let a = r.session();
+    r.fg(a);
+    r.commit(a, "https://shop.example/");
+    report(&mut r, a, ConnectionSecurity::CertificateError);
+    let out = r.m.request_install(a).unwrap();
+    assert_eq!(refusal(&out), InstallRefusal::ConnectionNotSecure);
+}
+
+/// Why: "not verified" is no evidence of safety. The safe choice is to refuse until the
+/// engine has confirmed the connection.
+#[test]
+fn an_https_page_whose_connection_is_not_verified_cannot_be_installed() {
+    let mut r = Rig::new(2);
+    let a = r.session();
+    r.fg(a);
+    r.commit(a, "https://shop.example/");
+    assert_eq!(security(&r, a), None);
+    let out = r.m.request_install(a).unwrap();
+    assert_eq!(refusal(&out), InstallRefusal::ConnectionNotSecure);
+    report(&mut r, a, ConnectionSecurity::Secure);
+    assert!(
+        !r.m.request_install(a).unwrap().commands.is_empty(),
+        "confirmed secure: the manifest is asked for"
+    );
+}
+
+/// Why: the connection can turn bad between the request and the answer; the candidate
+/// must not be offered on the strength of the earlier state.
+#[test]
+fn a_connection_that_degrades_before_the_manifest_arrives_gets_no_candidate() {
+    let mut r = Rig::new(2);
+    let a = shop(&mut r);
+    let req = ask_manifest(&mut r, a);
+    report(&mut r, a, ConnectionSecurity::CertificateError);
+    let out = answer(&mut r, a, req, found(r#"{"name":"Shop"}"#));
+    assert_eq!(refusal(&out), InstallRefusal::ConnectionNotSecure);
 }
 
 // ------------------------------------------------------------ external open

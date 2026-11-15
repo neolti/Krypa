@@ -3,7 +3,8 @@
 use egui::Rect;
 use krypa_apps::InstalledApp;
 use krypa_core::{
-    FailureReason, InstallSource, Notice, PendingExternalOpen, SessionInfo, SessionManager,
+    FailureReason, InstallRefusal, InstallSource, Notice, PendingExternalOpen, SessionInfo,
+    SessionManager,
 };
 use krypa_engine_api::{
     ConnectionSecurity, EngineCapabilities, LoadErrorKind, PermissionDecision, PermissionKind,
@@ -166,6 +167,8 @@ pub struct AppState {
     pub permission_prompts: Vec<PermissionPrompt>,
     /// The app waiting for the user's yes or no.
     pub install_prompt: Option<InstallPrompt>,
+    /// Why "Add to Krypa" was refused for the page, until the user dismisses the message.
+    pub install_refusal: Option<InstallRefusal>,
     /// The "open another app" prompt, copied from the core by [`AppState::sync_sessions`];
     /// the core owns it (one per session, dropped when the page goes away).
     pub external_prompt: Option<PendingExternalOpen>,
@@ -200,6 +203,7 @@ impl AppState {
             recents: Vec::new(),
             permission_prompts: Vec::new(),
             install_prompt: None,
+            install_refusal: None,
             external_prompt: None,
             icons: IconStore::new(),
             settings_open: false,
@@ -261,6 +265,7 @@ impl AppState {
                     source: *source,
                 });
             }
+            Notice::InstallRefused { reason, .. } => self.install_refusal = Some(*reason),
             Notice::SessionOpened { .. } => self.screen = Screen::Browser,
             Notice::ViewEvicted { .. }
             | Notice::ViewLost { .. }

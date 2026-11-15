@@ -18,8 +18,8 @@ mod manager_tests;
 pub use error::CoreError;
 pub use lifecycle::{IllegalTransition, SessionState, Trigger};
 pub use manager::{
-    FailureReason, InstallSource, ManagerConfig, ManualReason, MemoryPressure, Notice, Outcome,
-    PendingExternalOpen, SessionInfo, SessionManager, SessionSpec,
+    FailureReason, InstallRefusal, InstallSource, ManagerConfig, ManualReason, MemoryPressure,
+    Notice, Outcome, PendingExternalOpen, SessionInfo, SessionManager, SessionSpec,
 };
 pub use policy::{
     decide_navigation, is_in_scope, is_loadable, CancelReason, NavigationDecision, PolicyContext,

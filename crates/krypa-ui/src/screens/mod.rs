@@ -13,7 +13,7 @@ pub(crate) struct Insets {
 }
 
 use egui::{Context, Ui};
-use krypa_core::{InstallSource, ManualReason};
+use krypa_core::{InstallRefusal, InstallSource, ManualReason};
 
 use crate::components::{
     external_open_dialog, install_dialog, modal_panel, permission_dialog, settings_choice_row,
@@ -132,6 +132,26 @@ fn show_dialogs(ctx: &Context, state: &mut AppState, t: &Tokens, out: &mut Frame
                 out.intents
                     .push(Intent::ConfirmInstall(Box::new(prompt.app)));
             }
+        }
+        return true;
+    }
+    if let Some(reason) = state.install_refusal {
+        let body = match reason {
+            InstallRefusal::NotHttps => strings::INSTALL_REFUSED_NOT_HTTPS,
+            InstallRefusal::ConnectionNotSecure => strings::INSTALL_REFUSED_NOT_SECURE,
+        };
+        let panel = modal_panel(
+            ctx,
+            t,
+            "krypa-install-refused",
+            strings::INSTALL_REFUSED_TITLE,
+            |ui| {
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(egui::RichText::new(body).color(t.text_muted)).wrap());
+            },
+        );
+        if panel.dismissed {
+            state.install_refusal = None;
         }
         return true;
     }

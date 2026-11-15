@@ -94,6 +94,17 @@ pub enum ManualReason {
     Invalid,
 }
 
+/// Why "Add to Krypa" was refused for a page. Installed apps are https-only, and only a
+/// page whose connection the engine confirmed as secure may be installed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallRefusal {
+    /// The page is not an `https` page.
+    NotHttps,
+    /// An `https` page whose connection is not confirmed secure: a certificate error, or
+    /// nothing verified yet (still loading, no report from the engine).
+    ConnectionNotSecure,
+}
+
 /// Where the data of an install candidate came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallSource {
@@ -157,6 +168,14 @@ pub enum Notice {
         app: Box<InstalledApp>,
         /// Where it came from.
         source: InstallSource,
+    },
+    /// "Add to Krypa" was refused for this page and nothing was asked of the engine. Tell
+    /// the user why.
+    InstallRefused {
+        /// The page it was asked for.
+        session: SessionId,
+        /// Why.
+        reason: InstallRefusal,
     },
     /// A page wants to open another app (mailto, tel, app link); ask the user first. At
     /// most one is pending per session, see [`SessionManager::pending_external_open`].
@@ -265,6 +284,19 @@ struct PendingManifest {
 impl Session {
     fn is_private(&self) -> bool {
         self.profile == ProfileKind::Private
+    }
+
+    /// Whether the page shown now may not be installed, and why. Only an `https` page whose
+    /// connection the engine confirmed as secure can be: plain `http`, a certificate error
+    /// and "not verified" (`None`) are all refused.
+    fn install_refusal(&self) -> Option<InstallRefusal> {
+        if self.url.as_ref().is_none_or(|u| u.scheme() != "https") {
+            Some(InstallRefusal::NotHttps)
+        } else if self.security != Some(ConnectionSecurity::Secure) {
+            Some(InstallRefusal::ConnectionNotSecure)
+        } else {
+            None
+        }
     }
 
     /// Back to "unverified": nothing is confirmed about whatever is shown next.
@@ -657,6 +689,10 @@ impl SessionManager {
     /// # Errors
     /// Unknown session, a state without a live view, or a page that is not an `http(s)`
     /// page (nothing committed yet, or an error page).
+    ///
+    /// A page that may not be installed (plain `http`, certificate error, connection not
+    /// verified) is not an error: the outcome is a [`Notice::InstallRefused`] and no
+    /// command, so the engine is never asked and no dialog follows.
     pub fn request_install(&mut self, id: SessionId) -> Result<Outcome, CoreError> {
         let s = self.session(id)?;
         if !s.state.has_live_view() {
@@ -671,6 +707,15 @@ impl SessionManager {
             .clone()
             .filter(is_loadable)
             .ok_or(CoreError::UrlNotLoadable)?;
+        if let Some(reason) = s.install_refusal() {
+            return Ok(Outcome {
+                commands: Vec::new(),
+                notices: vec![Notice::InstallRefused {
+                    session: id,
+                    reason,
+                }],
+            });
+        }
         self.last_manifest_request += 1;
         let request = ManifestRequestId(self.last_manifest_request);
         self.session_mut(id)?.pending_manifest = Some(PendingManifest {
@@ -906,6 +951,16 @@ impl SessionManager {
         let Some(pending) = s.pending_manifest.take() else {
             return Outcome::default();
         };
+        // The connection can degrade (certificate error) while the answer is on its way.
+        if let Some(reason) = s.install_refusal() {
+            return Outcome {
+                commands: Vec::new(),
+                notices: vec![Notice::InstallRefused {
+                    session: id,
+                    reason,
+                }],
+            };
+        }
         let (app, source) = match result {
             ManifestResult::Found {
                 manifest_url,
@@ -920,7 +975,7 @@ impl SessionManager {
             }
             ManifestResult::Failed(_) => (None, InstallSource::Manual(ManualReason::FetchFailed)),
         };
-        // The page itself is always a valid candidate: it was checked to be loadable.
+        // The page itself is a valid candidate: it was checked to be an installable https page.
         let app =
             app.or_else(|| InstalledApp::manual(&pending.document_url, s.title.as_deref()).ok());
         let Some(app) = app else {

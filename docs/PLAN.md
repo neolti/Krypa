@@ -63,7 +63,7 @@ These override the items above where they differ.
 
 ### 1.2 Install flow, icons and external open (2026-11-14, tested headless only)
 
-Add to Krypa now asks the engine for the page's manifest (`FetchManifest` / `ManifestFetched`), shows name and origin in a dialog and saves through `krypa-storage` on confirm, falling back to the manual install when the manifest is missing or unusable; the harness loads installed apps at startup. App cards show manifest icons (host fetch, PNG only, size and pixel caps, placeholder on any failure). Pages that navigate to `tel:`, `mailto:` and similar now need a user gesture, the foreground session, and a Cancel-by-default confirmation; `EngineCommand::OpenExternal` hands the link to the OS. Details in ARCHITECTURE.md section 4. Not done: manifest shortcuts, share targets, service workers, update checks, JPEG/WebP/SVG icons, persisted icon bytes, real WKWebView adapter code (all still U on device).
+Add to Krypa now asks the engine for the page's manifest (`FetchManifest` / `ManifestFetched`), shows name and origin in a dialog and saves through `krypa-storage` on confirm, falling back to the manual install when the manifest is missing or unusable; only `https` pages with a confirmed-secure connection can be added (plain `http`, certificate errors and unverified connections get a message, before the engine is asked); the harness loads installed apps at startup. App cards show manifest icons (host fetch, PNG only, size and pixel caps, placeholder on any failure). Pages that navigate to `tel:`, `mailto:` and similar now need a user gesture, the foreground session, and a Cancel-by-default confirmation; `EngineCommand::OpenExternal` hands the link to the OS. Details in ARCHITECTURE.md section 4. Not done: manifest shortcuts, share targets, service workers, update checks, JPEG/WebP/SVG icons, persisted icon bytes, real WKWebView adapter code (all still U on device).
 
 ## 2. Workspace layout (created only as WPs need it)
 
@@ -135,7 +135,9 @@ Confirm or overturn each item in §1 explicitly.
 - Icon selection: same-scheme https only, pick best size for a target px, `purpose`.
 - `theme_color` / `background_color` parsed to RGBA or dropped.
 - `InstalledApp` model + `from_manifest(...)` and `manual(document_url, title)` for
-  sites without a manifest. `is_in_scope(&Url)` for navigation leaving the app.
+  sites without a manifest. Installed apps are https-only (owner decision): plain-`http`
+  sites cannot be installed and a stored `http` row is rejected as corrupt; browsing
+  `http` pages is unaffected. `is_in_scope(&Url)` for navigation leaving the app.
 - Tests: "a manifest cannot install an app pointing at another origin", "hostile
   names cannot spoof via bidi overrides", "garbage JSON yields an error, not a panic".
 

@@ -1119,6 +1119,40 @@ fn the_install_dialog_shows_name_and_origin_and_confirms_only_on_add() {
     assert!(h.has_text(strings::INSTALL_NOTE_BAD_MANIFEST));
 }
 
+/// Why: when "Add to Krypa" is refused the user must be told why (a silent no-op looks
+/// like a broken button), and the message must offer nothing to install.
+#[test]
+fn a_refused_install_explains_why_and_offers_nothing_to_install() {
+    use krypa_core::{InstallRefusal, Notice};
+    for (reason, text) in [
+        (InstallRefusal::NotHttps, strings::INSTALL_REFUSED_NOT_HTTPS),
+        (
+            InstallRefusal::ConnectionNotSecure,
+            strings::INSTALL_REFUSED_NOT_SECURE,
+        ),
+    ] {
+        let mut state = browser_state(session(
+            3,
+            SessionState::Foreground,
+            "http://plain.example/",
+            None,
+        ));
+        state.apply_notice(&Notice::InstallRefused {
+            session: SessionId::new(3),
+            reason,
+        });
+        assert!(state.install_prompt.is_none());
+        let mut h = Harness::new(state);
+        assert!(h.has_text(strings::INSTALL_REFUSED_TITLE));
+        assert!(h.has_text(text));
+        assert!(!h.has_text(strings::INSTALL_CONFIRM), "no Add button");
+        h.click(strings::CLOSE);
+        assert!(h.state.install_refusal.is_none());
+        assert!(!h.has_text(text));
+        assert!(h.take_intents().is_empty());
+    }
+}
+
 // ---------------------------------------------------------------- app icons
 
 fn png_bytes(side: u32) -> Vec<u8> {

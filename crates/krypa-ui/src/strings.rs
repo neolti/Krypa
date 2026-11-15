@@ -219,6 +219,14 @@ pub const INSTALL_NOTE_NO_MANIFEST: &str =
 pub const INSTALL_NOTE_BAD_MANIFEST: &str =
     "This site\u{2019}s app information could not be used. It is added as a shortcut to this page.";
 
+/// Title of the message shown when "Add to Krypa" is refused.
+pub const INSTALL_REFUSED_TITLE: &str = "Can\u{2019}t add this site";
+/// The page is not https.
+pub const INSTALL_REFUSED_NOT_HTTPS: &str = "Only secure (https) sites can be added to Krypa.";
+/// An https page whose connection is not confirmed secure.
+pub const INSTALL_REFUSED_NOT_SECURE: &str =
+    "This site\u{2019}s connection is not verified as secure, so it can\u{2019}t be added to Krypa.";
+
 /// Install dialog title naming the app (already sanitized by `krypa-apps`).
 #[must_use]
 pub fn install_title(name: &str) -> String {

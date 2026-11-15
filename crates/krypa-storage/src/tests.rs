@@ -1192,7 +1192,6 @@ fn an_installed_app_is_equal_after_save_close_reopen_and_load() {
     let apps = [
         rich_app(),
         manual_app("https://plain.example/dir/page?q=1", "Plain"),
-        manual_app("http://insecure.example:8080/", "Insecure"),
     ];
     {
         let s = f.open();
@@ -1355,6 +1354,40 @@ fn one_bad_row_is_reported_without_hiding_or_failing_the_good_ones() {
     let second = s.list_installed_apps(2, first.next.as_ref()).unwrap();
     assert_eq!(second.apps, vec![c]);
     assert!(second.next.is_none());
+}
+
+#[test]
+fn a_stored_plain_http_app_is_corrupt_and_the_https_apps_still_load() {
+    // Why: installed apps are https-only. A row written before that rule, or planted by
+    // hand, is internally consistent but must never become an app, and it must not hide
+    // the good ones next to it.
+    let f = Fixture::new();
+    let s = f.open();
+    let a = manual_app("https://a.example/", "Alpha");
+    let b = manual_app("https://b.example/", "Bravo");
+    let c = manual_app("https://c.example/", "Charlie");
+    for (i, app) in [&a, &b, &c].into_iter().enumerate() {
+        s.save_app(app, i as i64).unwrap();
+    }
+    f.raw()
+        .execute(
+            "UPDATE installed_apps SET id = 'http://b.example/', start_url = 'http://b.example/',
+                    scope = 'http://b.example/' WHERE name = 'Bravo'",
+            [],
+        )
+        .unwrap();
+    let page = s.list_installed_apps(10, None).unwrap();
+    assert_eq!(page.apps, vec![a, c]);
+    assert_eq!(page.errors.len(), 1);
+    assert!(matches!(
+        &page.errors[0],
+        StorageError::CorruptRow {
+            table: "installed_apps",
+            row: Some(_),
+            field: "id"
+        }
+    ));
+    assert_corrupt(s.get_app(&url("http://b.example/")), "installed_apps");
 }
 
 #[test]
