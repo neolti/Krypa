@@ -1,0 +1,8 @@
+/target
+/.cargo/config.toml
+*.log
+.DS_Store
+xcuserdata/
+DerivedData/
+.gradle/
+local.properties

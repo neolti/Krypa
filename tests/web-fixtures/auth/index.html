@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: auth (fake login)</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+.fake{background:#fde8e8;border:1px solid #d98080;padding:8px;border-radius:6px;}
+label{display:block;margin:12px 0;}
+input{display:block;width:100%;box-sizing:border-box;font-size:16px;padding:8px;margin-top:4px;}
+button{font-size:16px;padding:10px 16px;margin-top:8px;}
+dt{font-weight:600;margin-top:8px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: auth (fake login)</h1>
+<div class="fake">
+  <p><strong>This is a FAKE login for browser testing.</strong> It stores a test cookie and a localStorage value only in this browser. It checks no real account and sends nothing to any server.</p>
+  <p>Test username: <strong id="test-user">tester</strong><br>Test password: <strong id="test-pass">krypa-test-pass</strong></p>
+</div>
+<div class="expect">
+  <p><strong>What this tests:</strong> cookies and localStorage persist across visits, and sign-out clears both.</p>
+  <p><strong>Expected correct result:</strong> on first visit the state reads "signed out". Sign in with the test values; the state reads "signed in" and the cookie and localStorage show "present" and "tester". Reload the page: it still reads "signed in". Open the page again later in the same browser: it still reads "signed in". Sign out: the state returns to "signed out" and both values read "absent".</p>
+</div>
+<dl>
+  <dt>Auth state</dt><dd id="auth-state" data-testid="auth-state">(script)</dd>
+  <dt>Cookie krypa_fixture_session</dt><dd id="cookie-status" data-testid="cookie-status">(script)</dd>
+  <dt>localStorage krypa-fixture-user</dt><dd id="ls-status" data-testid="ls-status">(script)</dd>
+</dl>
+<form id="login-form" data-testid="login-form">
+  <label>Username
+    <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none">
+  </label>
+  <label>Password
+    <input id="password" name="password" type="password" autocomplete="current-password">
+  </label>
+  <button id="login-btn" type="submit">Sign in (fake)</button>
+  <p id="login-error" data-testid="login-error" role="alert"></p>
+</form>
+<div id="signed-in-panel" data-testid="signed-in-panel" hidden>
+  <p>You are signed in as <strong>tester</strong> (fake account).</p>
+  <button id="sign-out-btn" type="button">Sign out</button>
+</div>
+<script>
+(function () {
+  var USER = 'tester';
+  var PASS = 'krypa-test-pass';
+  var COOKIE = 'krypa_fixture_session';
+  var LS_KEY = 'krypa-fixture-user';
+  var COOKIE_PATH = '/auth/';
+
+  function hasCookie() {
+    return document.cookie.split('; ').some(function (c) { return c.indexOf(COOKIE + '=') === 0; });
+  }
+  function lsValue() {
+    try { return localStorage.getItem(LS_KEY); } catch (e) { return 'unavailable (' + e.name + ')'; }
+  }
+  function refresh() {
+    var c = hasCookie();
+    var l = lsValue();
+    var signedIn = c && l === USER;
+    document.getElementById('auth-state').textContent = signedIn ? 'signed in' : 'signed out';
+    document.getElementById('cookie-status').textContent = c ? 'present' : 'absent';
+    document.getElementById('ls-status').textContent = l === null ? 'absent' : l;
+    document.getElementById('login-form').hidden = signedIn;
+    document.getElementById('signed-in-panel').hidden = !signedIn;
+  }
+
+  document.getElementById('login-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var u = document.getElementById('username').value;
+    var p = document.getElementById('password').value;
+    var err = document.getElementById('login-error');
+    if (u !== USER || p !== PASS) {
+      err.textContent = 'Wrong username or password. Use the test values shown above.';
+      return;
+    }
+    err.textContent = '';
+    document.cookie = COOKIE + '=1; path=' + COOKIE_PATH + '; max-age=86400; SameSite=Lax';
+    try { localStorage.setItem(LS_KEY, USER); } catch (ex) { err.textContent = 'localStorage unavailable: ' + ex.name; }
+    refresh();
+  });
+
+  document.getElementById('sign-out-btn').addEventListener('click', function () {
+    document.cookie = COOKIE + '=; path=' + COOKIE_PATH + '; max-age=0; SameSite=Lax';
+    try { localStorage.removeItem(LS_KEY); } catch (ex) { /* reported by refresh */ }
+    refresh();
+  });
+
+  refresh();
+})();
+</script>
+</body>
+</html>

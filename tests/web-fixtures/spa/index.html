@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: spa - home</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+.dim{color:#555;}
+nav a{display:inline-block;margin:4px 8px 4px 0;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: spa (client-side routing)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> history.pushState navigation without page loads, popstate on Back and Forward, and deep links that work on reload.</p>
+  <p><strong>Expected correct result:</strong> clicking a route link changes the URL and the "current view" box without a full page load (the page does not flash or reload). Back and Forward move between the routes and update the box. Reloading /spa/about/ or /spa/items/42/ shows the matching view. The unknown route shows "not-found".</p>
+</div>
+<nav>
+  <a id="link-home" data-spa href="/spa/">Home</a>
+  <a id="link-about" data-spa href="/spa/about/">About</a>
+  <a id="link-item-42" data-spa href="/spa/items/42/">Item 42</a>
+  <a id="link-unknown" href="/spa/no-such-route/">Unknown route (pushState)</a>
+</nav>
+<dl>
+  <dt>Current route (location.pathname)</dt><dd id="current-route" data-testid="current-route">(script)</dd>
+  <dt>Current view</dt><dd id="current-view" data-testid="current-view">(script)</dd>
+  <dt>View text</dt><dd id="view-text" data-testid="view-text">(script)</dd>
+  <dt>history.length</dt><dd id="route-count">(script)</dd>
+</dl>
+<p class="dim">Note: only the three listed routes have deep-link files. Reloading an unknown route such as /spa/no-such-route/ returns 404 from a plain static server. That is expected for this fixture.</p>
+<script src="app.js"></script>
+</body>
+</html>

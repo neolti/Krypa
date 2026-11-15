@@ -1,0 +1,16 @@
+[package]
+name = "krypa-engine-api"
+description = "Platform-neutral command/event contract between the Krypa core and a web engine adapter"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

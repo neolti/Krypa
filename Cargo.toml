@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
+edition = "2021"
+license = "MPL-2.0"
+version = "0.1.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+idna = "1"
+thiserror = "2"
+tracing = "0.1"
+url = { version = "2", features = ["serde"] }
+rusqlite = { version = "0.42", features = ["bundled"] }
+egui = { version = "0.37.0", default-features = false }
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

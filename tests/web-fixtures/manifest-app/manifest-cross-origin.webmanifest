@@ -1,0 +1,12 @@
+{
+  "name": "Krypa Cross-Origin Start Test",
+  "short_name": "Krypa XOrigin",
+  "start_url": "http://127.0.0.1:8766/manifest-app/index.html",
+  "scope": "/manifest-app/",
+  "display": "standalone",
+  "theme_color": "#b45309",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

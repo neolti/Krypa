@@ -1,0 +1,12 @@
+{
+  "name": "Krypa ‮demo app name (RTL override test)",
+  "short_name": "Krypa RTL",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#7c3aed",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

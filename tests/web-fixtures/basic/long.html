@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: basic - long scrolling page</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+section{border-bottom:1px solid #ccc;padding:12px 0;}
+</style>
+</head>
+<body id="top">
+<h1>Krypa fixture: basic (long scrolling page)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> scrolling a long page, fragment navigation to #section-60, and scroll restoration.</p>
+  <p><strong>Expected correct result:</strong> the page scrolls smoothly to the bottom; opening long.html#section-60 places "Section 60" at the top of the viewport; "Back to top" returns to the heading.</p>
+</div>
+<p><a id="link-index" href="index.html">Back to index.html</a> | <a id="link-top" href="#top">Back to top</a></p>
+<div id="sections"></div>
+<noscript><p>JavaScript is off: this page generates 120 sections with script and shows none without it.</p></noscript>
+<p id="end-of-long-page" data-testid="end-of-long-page">End of long page (section 120 is the last section).</p>
+<script>
+(function () {
+  var host = document.getElementById('sections');
+  for (var i = 1; i <= 120; i++) {
+    var s = document.createElement('section');
+    s.id = 'section-' + i;
+    s.setAttribute('data-testid', 'section-' + i);
+    var h = document.createElement('h2');
+    h.textContent = 'Section ' + i;
+    var p = document.createElement('p');
+    p.textContent = 'Deterministic filler for section ' + i + '. Lorem-free test text repeated to add height. Scroll on.';
+    s.appendChild(h);
+    s.appendChild(p);
+    host.appendChild(s);
+  }
+})();
+</script>
+</body>
+</html>

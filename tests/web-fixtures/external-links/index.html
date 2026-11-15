@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: external-links</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+.warn{background:#fff7d6;border:1px solid #d8c36b;padding:8px;border-radius:6px;}
+ul{padding-left:0;list-style:none;}
+li{margin:12px 0;padding:8px;border:1px solid #ddd;border-radius:6px;}
+.label{display:block;font-size:14px;color:#444;margin-top:4px;}
+button{font-size:16px;padding:10px 14px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: external-links</h1>
+<div class="warn">
+  <p><strong>Read first:</strong> this is the only fixture that links out on purpose. The external https link is the one exception to the no-network rule. Tapping an item opens something outside the fixture; do this on a test device only.</p>
+</div>
+<div class="expect">
+  <p><strong>What this tests:</strong> how Krypa routes each kind of link: new-window links, script-opened windows, mail and phone links, custom app schemes, javascript: links and data: links.</p>
+  <p><strong>Expected correct result:</strong> each item's label says what a safe browser does. The result line under each item shows what happened in this page. This page must never be replaced by a javascript: or data: result unless the browser explicitly allows it.</p>
+</div>
+<ul>
+  <li>
+    <a id="link-blank" data-testid="link-blank" href="https://example.com/?krypa=target-blank" target="_blank" rel="noopener">target=_blank (https)</a>
+    <span class="label">Expected: opens in a new tab or window (or is handed to the system browser). This page stays open and unchanged.</span>
+  </li>
+  <li>
+    <button id="btn-window-open" data-testid="btn-window-open" type="button">window.open (https)</button>
+    <span class="label">Expected: window.open runs only after this tap. Opens a new tab or window, or is blocked with no crash. This page stays open. Result: <strong id="result-window-open" data-testid="result-window-open">not pressed</strong></span>
+  </li>
+  <li>
+    <a id="link-mailto" data-testid="link-mailto" href="mailto:test@example.com?subject=Krypa%20fixture">mailto: link</a>
+    <span class="label">Expected: opens the system mail composer, or shows nothing if no mail app is set. The page stays open. Nothing is sent: the composer must be cancelled.</span>
+  </li>
+  <li>
+    <a id="link-tel" data-testid="link-tel" href="tel:+15555550100">tel: link (fictional 555 number)</a>
+    <span class="label">Expected: offers to call the number (the 555-01xx range is fictional). Cancel the call. The page stays open.</span>
+  </li>
+  <li>
+    <a id="link-custom-scheme" data-testid="link-custom-scheme" href="krypa-test://fixture/external-links">custom app scheme krypa-test://</a>
+    <span class="label">Expected: no app is registered for this scheme, so nothing opens. The browser must not crash or show a blank page. Expected result: the page stays open. A system prompt to open another app is also acceptable if the browser shows it.</span>
+  </li>
+  <li>
+    <a id="link-javascript" data-testid="link-javascript" href="javascript:document.getElementById('result-javascript').textContent='javascript: href ran in this page'">javascript: link</a>
+    <span class="label">Expected: the script runs inside this page only. It changes the result text below and does not navigate away. Result: <strong id="result-javascript" data-testid="result-javascript">not tapped</strong></span>
+  </li>
+  <li>
+    <a id="link-data" data-testid="link-data" href="data:text/html;charset=utf-8,%3Ch1%3Edata-link-target%3C%2Fh1%3E%3Cp%3EIf%20you%20see%20this%2C%20a%20data%3A%20URL%20rendered.%3C%2Fp%3E">data: link (inline HTML)</a>
+    <span class="label">Expected: the browser blocks top-level navigation to data: URLs, or renders the target as an inert page with no access to this page. Either is correct. The page must not run script from the data: URL inside this page's origin. Reporting which behaviour happened is the test result.</span>
+  </li>
+</ul>
+<script>
+(function () {
+  document.getElementById('btn-window-open').addEventListener('click', function () {
+    var w = window.open('https://example.com/?krypa=window-open', '_blank', 'noopener');
+    document.getElementById('result-window-open').textContent = w ? 'window opened' : 'no window handle returned (blocked or opened without handle)';
+  });
+})();
+</script>
+</body>
+</html>

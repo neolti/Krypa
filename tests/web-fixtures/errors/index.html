@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: errors</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+.warn{background:#fff7d6;border:1px solid #d8c36b;padding:8px;border-radius:6px;}
+li{margin:12px 0;}
+.label{display:block;font-size:14px;color:#444;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: errors</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> how Krypa shows network and navigation failures. Each link is a deliberate failure.</p>
+  <p><strong>Expected correct result:</strong> each link leads to an error page or error view that names the failure. Krypa does not show a blank page, does not hang, and offers a way back.</p>
+</div>
+<ul>
+  <li>
+    <a id="link-404" data-testid="link-404" href="does-not-exist.html">Missing page (HTTP 404)</a>
+    <span class="label">Expected: the server returns 404. Krypa shows the 404 page from the server, or its own not-found view. The address bar shows does-not-exist.html.</span>
+  </li>
+  <li>
+    <a id="link-refused" data-testid="link-refused" href="http://127.0.0.1:8799/">Refused connection (closed local port 8799)</a>
+    <span class="label">Expected: nothing listens on port 8799, so the connection is refused. Krypa shows a connection error, not a blank page. Port 8799 must stay closed while this test runs (do not start a server on it).</span>
+  </li>
+  <li>
+    <a id="link-invalid-host" data-testid="link-invalid-host" href="http://krypa-fixture-no-such-host.invalid/">Invalid hostname (.invalid TLD)</a>
+    <span class="label">Expected: DNS lookup fails (.invalid never resolves, RFC 2606). Krypa shows a "server not found" or similar error. The lookup is caused only by tapping this link.</span>
+  </li>
+  <li>
+    <a id="link-memory" data-testid="link-memory" href="memory.html">Memory pressure page (manual only)</a>
+    <span class="label">Expected: this page allocates memory only after you press its button. Nothing is allocated on load. See memory.html for the labelled test.</span>
+  </li>
+</ul>
+<div class="warn">
+  <p><strong>Note:</strong> the 404 and refused-connection results are normal here. A blank page for any of the first three links is a failure to record.</p>
+</div>
+</body>
+</html>

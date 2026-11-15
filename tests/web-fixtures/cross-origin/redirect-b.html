@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: cross-origin - arrived at origin B</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: cross-origin (origin B)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> this page is served from origin B (port 8766). Reaching it from origin A's redirect test is the pass condition.</p>
+  <p><strong>Expected correct result:</strong> the line below reads "arrived at origin B" and the origin reads http://127.0.0.1:8766.</p>
+</div>
+<p id="arrived" data-testid="arrived"><strong>arrived at origin B</strong></p>
+<dl>
+  <dt>location.origin</dt><dd id="origin-here" data-testid="origin-here">(script)</dd>
+</dl>
+<p><a id="link-back-a" href="http://localhost:8765/cross-origin/index.html">Back to origin A (localhost:8765)</a></p>
+<script>
+document.getElementById('origin-here').textContent = location.origin;
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[package]
+name = "krypa-storage"
+description = "SQLite persistence for Krypa's own metadata (never website data)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+krypa-apps = { path = "../krypa-apps" }
+krypa-engine-api = { path = "../krypa-engine-api" }
+krypa-navigation = { path = "../krypa-navigation" }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: multi-page - index</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+dt{font-weight:600;margin-top:8px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: multi-page (index)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> back and forward history across normal page loads, and whether a page reloads or is restored from the back/forward cache.</p>
+  <p><strong>Expected correct result:</strong> go index -&gt; a -&gt; b -&gt; c, then Back three times and Forward once. Each page shows its own path. The counter for a page goes up by 1 on each fresh load. If the page is restored from the back/forward cache, the status line says so and the counter does not change. Both outcomes are acceptable, but the status line must match what happened.</p>
+</div>
+<dl>
+  <dt>Path</dt><dd id="path">(script)</dd>
+  <dt>Visits to this page in this tab (sessionStorage)</dt><dd id="visit-count">(script)</dd>
+  <dt>Load source</dt><dd id="load-source">(script)</dd>
+  <dt>history.length</dt><dd id="history-length">(script)</dd>
+</dl>
+<p><a id="link-a" href="a.html">Go to page a</a></p>
+<p><a id="link-b" href="b.html">Go to page b</a></p>
+<p><a id="link-c" href="c.html">Go to page c</a></p>
+<script>
+(function () {
+  var path = location.pathname;
+  var key = 'krypa-visits:' + path;
+  document.getElementById('path').textContent = path;
+  document.getElementById('history-length').textContent = String(history.length);
+  window.addEventListener('pageshow', function (e) {
+    var count;
+    try {
+      count = parseInt(sessionStorage.getItem(key) || '0', 10);
+      if (!e.persisted) {
+        count += 1;
+        sessionStorage.setItem(key, String(count));
+      }
+    } catch (err) {
+      count = 'sessionStorage unavailable (' + err.name + ')';
+    }
+    document.getElementById('visit-count').textContent = String(count);
+    document.getElementById('load-source').textContent = e.persisted
+      ? 'restored from back/forward cache (counter not incremented)'
+      : 'fresh load from network or cache (counter incremented)';
+    document.getElementById('history-length').textContent = String(history.length);
+  });
+})();
+</script>
+</body>
+</html>

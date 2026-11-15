@@ -1,0 +1,14 @@
+[package]
+name = "krypa-navigation"
+description = "Validates untrusted address-bar text and URLs into safe navigations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+idna = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[lints]
+workspace = true

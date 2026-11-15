@@ -1,0 +1,18 @@
+[package]
+name = "krypa-core"
+description = "Krypa session lifecycle and session manager (deterministic state machine)"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+krypa-apps = { path = "../krypa-apps" }
+krypa-engine-api = { path = "../krypa-engine-api" }
+krypa-navigation = { path = "../krypa-navigation" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[lints]
+workspace = true

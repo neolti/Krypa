@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: manifest-app (installable web app)</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.svg" type="image/svg+xml">
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+dt{font-weight:600;margin-top:8px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: manifest-app (installable web app)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> the web app manifest is discovered from the page, parsed, and used for install and standalone display.</p>
+  <p><strong>Expected correct result:</strong> the manifest status below reads "parsed". The app can be added to the home screen with the name "Krypa Fixture App" and the icon shown. Opened from the home screen it runs with display "standalone" (no browser toolbar) and starts at index.html inside the scope "/manifest-app/".</p>
+</div>
+<dl>
+  <dt>Manifest status (fetched and parsed by this page)</dt><dd id="manifest-status" data-testid="manifest-status">(script)</dd>
+  <dt>name</dt><dd id="m-name" data-testid="m-name">(script)</dd>
+  <dt>short_name</dt><dd id="m-short" data-testid="m-short">(script)</dd>
+  <dt>start_url</dt><dd id="m-start" data-testid="m-start">(script)</dd>
+  <dt>scope</dt><dd id="m-scope" data-testid="m-scope">(script)</dd>
+  <dt>display</dt><dd id="m-display" data-testid="m-display">(script)</dd>
+  <dt>theme_color / background_color</dt><dd id="m-colors" data-testid="m-colors">(script)</dd>
+</dl>
+<img src="icon-192.svg" width="96" height="96" alt="Krypa fixture icon" data-testid="icon-preview">
+<h2>Negative manifest tests (open each page, each has its own manifest)</h2>
+<ul>
+  <li><a id="link-neg-cross-origin" href="manifest-cross-origin.html">manifest-cross-origin.html</a>: start_url points to another origin. Expected: the browser must not treat it as an installable app at that origin; it rejects or ignores the manifest and does not open the other origin as the app.</li>
+  <li><a id="link-neg-invalid" href="manifest-invalid.html">manifest-invalid.html</a>: the manifest is not valid JSON. Expected: the manifest is ignored, no install metadata is used, and the page still loads.</li>
+  <li><a id="link-neg-rtl" href="manifest-rtl-name.html">manifest-rtl-name.html</a>: the name contains a right-to-left override character (U+202E). Expected: the name is shown without spoofing the surrounding text in the install UI.</li>
+</ul>
+<script>
+(function () {
+  function set(id, text) { document.getElementById(id).textContent = text; }
+  fetch('manifest.webmanifest', { cache: 'no-store' })
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (m) {
+      set('manifest-status', 'parsed');
+      set('m-name', m.name);
+      set('m-short', m.short_name);
+      set('m-start', m.start_url);
+      set('m-scope', m.scope);
+      set('m-display', m.display);
+      set('m-colors', m.theme_color + ' / ' + m.background_color);
+    })
+    .catch(function (err) {
+      set('manifest-status', 'NOT parsed: ' + err.message);
+    });
+})();
+</script>
+</body>
+</html>

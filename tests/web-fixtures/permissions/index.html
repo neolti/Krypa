@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: permissions</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+.warn{background:#fff7d6;border:1px solid #d8c36b;padding:8px;border-radius:6px;}
+button{display:block;width:100%;font-size:17px;padding:12px;margin:8px 0;box-sizing:border-box;}
+button:disabled{opacity:.5;}
+dt{font-weight:600;margin-top:8px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: permissions</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> each permission prompt and its result. Buttons run one at a time: while one request is pending, all buttons are disabled.</p>
+  <p><strong>Expected correct result:</strong> each press shows the system or browser prompt for that permission (the page does not show its own). Allow shows "granted" (geolocation shows "position received", the position itself is not displayed). Deny shows "denied" or the error name. If the API is missing, the row says "unavailable". Results are per request and never reused.</p>
+</div>
+<div class="warn" id="secure-warning" data-testid="secure-warning" hidden>
+  <p><strong>Not a secure context.</strong> Geolocation, camera, microphone and notifications need https or localhost. This page is not on either, so these results are expected to fail.</p>
+</div>
+<p>Secure context: <strong id="secure" data-testid="secure">(script)</strong></p>
+<button id="btn-geo" data-testid="btn-geo" type="button">1. Request geolocation</button>
+<button id="btn-camera" data-testid="btn-camera" type="button">2. Request camera</button>
+<button id="btn-mic" data-testid="btn-mic" type="button">3. Request microphone</button>
+<button id="btn-notify" data-testid="btn-notify" type="button">4. Request notifications</button>
+<dl>
+  <dt>Geolocation</dt><dd id="res-geo" data-testid="res-geo">not requested</dd>
+  <dt>Camera</dt><dd id="res-camera" data-testid="res-camera">not requested</dd>
+  <dt>Microphone</dt><dd id="res-mic" data-testid="res-mic">not requested</dd>
+  <dt>Notifications</dt><dd id="res-notify" data-testid="res-notify">not requested</dd>
+</dl>
+<script>
+(function () {
+  var buttons = ['btn-geo', 'btn-camera', 'btn-mic', 'btn-notify'].map(function (id) { return document.getElementById(id); });
+  var busy = false;
+
+  function describe(err) {
+    if (err && typeof err.code === 'number') return 'error code ' + err.code + ': ' + err.message;
+    return (err && err.name ? err.name : 'Error') + ': ' + (err && err.message ? err.message : 'unknown');
+  }
+
+  function stopTracks(stream) {
+    stream.getTracks().forEach(function (t) { t.stop(); });
+  }
+
+  var steps = {
+    geo: {
+      result: 'res-geo',
+      run: function () {
+        return new Promise(function (resolve, reject) {
+          if (!navigator.geolocation) { reject(new Error('navigator.geolocation unavailable')); return; }
+          navigator.geolocation.getCurrentPosition(
+            function () { resolve('granted: position received (not displayed)'); },
+            function (err) { reject(err); },
+            { timeout: 20000, maximumAge: 0 }
+          );
+        });
+      }
+    },
+    camera: {
+      result: 'res-camera',
+      run: function () {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return Promise.reject(new Error('getUserMedia unavailable'));
+        return navigator.mediaDevices.getUserMedia({ video: true }).then(function (stream) {
+          stopTracks(stream);
+          return 'granted: camera stream opened and closed';
+        });
+      }
+    },
+    mic: {
+      result: 'res-mic',
+      run: function () {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return Promise.reject(new Error('getUserMedia unavailable'));
+        return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+          stopTracks(stream);
+          return 'granted: microphone stream opened and closed';
+        });
+      }
+    },
+    notify: {
+      result: 'res-notify',
+      run: function () {
+        if (!('Notification' in window)) return Promise.reject(new Error('Notification API unavailable'));
+        return Notification.requestPermission().then(function (p) { return 'result: ' + p; });
+      }
+    }
+  };
+
+  function runOne(name, buttonId) {
+    if (busy) return;
+    busy = true;
+    buttons.forEach(function (b) { b.disabled = true; });
+    var step = steps[name];
+    var out = document.getElementById(step.result);
+    out.textContent = 'waiting for prompt...';
+    step.run().then(function (msg) {
+      out.textContent = msg;
+    }, function (err) {
+      out.textContent = describe(err);
+    }).then(function () {
+      busy = false;
+      buttons.forEach(function (b) { b.disabled = false; });
+    });
+  }
+
+  document.getElementById('secure').textContent = String(window.isSecureContext);
+  if (!window.isSecureContext) document.getElementById('secure-warning').hidden = false;
+
+  document.getElementById('btn-geo').addEventListener('click', function () { runOne('geo'); });
+  document.getElementById('btn-camera').addEventListener('click', function () { runOne('camera'); });
+  document.getElementById('btn-mic').addEventListener('click', function () { runOne('mic'); });
+  document.getElementById('btn-notify').addEventListener('click', function () { runOne('notify'); });
+})();
+</script>
+</body>
+</html>

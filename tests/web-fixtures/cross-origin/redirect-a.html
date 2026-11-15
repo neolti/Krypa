@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: cross-origin - redirect from origin A</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+button{font-size:16px;padding:10px 14px;margin:6px 6px 6px 0;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: cross-origin (redirect from origin A)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> a page on origin A replaces itself with a page on origin B (location.replace), so the address bar changes origin.</p>
+  <p><strong>Expected correct result:</strong> after about 1.5 s the address changes to http://127.0.0.1:8766/cross-origin/redirect-b.html and that page shows "arrived at origin B". Pressing "Stop redirect" first keeps this page on screen. Going Back from origin B returns here, or to the previous page, depending on the history rules the browser applies to replace.</p>
+</div>
+<p id="countdown" data-testid="countdown">Redirecting in 2 seconds...</p>
+<button id="btn-now" data-testid="btn-now" type="button">Redirect now</button>
+<button id="btn-stop" data-testid="btn-stop" type="button">Stop redirect</button>
+<p><a id="link-index" href="index.html">Back to origin A index</a></p>
+<script>
+(function () {
+  var TARGET = 'http://127.0.0.1:8766/cross-origin/redirect-b.html';
+  var timer = setTimeout(go, 1500);
+  function go() { location.replace(TARGET); }
+  document.getElementById('btn-now').addEventListener('click', go);
+  document.getElementById('btn-stop').addEventListener('click', function () {
+    clearTimeout(timer);
+    document.getElementById('countdown').textContent = 'Redirect stopped. Press "Redirect now" to continue.';
+  });
+})();
+</script>
+</body>
+</html>

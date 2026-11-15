@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: errors - memory pressure (manual)</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.warn{background:#fde8e8;border:1px solid #d98080;padding:8px;border-radius:6px;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+button{font-size:16px;padding:12px 16px;margin:6px 6px 6px 0;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: errors (memory pressure, manual only)</h1>
+<div class="warn">
+  <p><strong>Deliberate memory use. Press a button to start it. Nothing runs on load and nothing repeats automatically.</strong> Each press adds 64 MB of typed-array memory to this page. This can slow or crash the WebView or the device. Use a test device, and stop when the test has its result.</p>
+</div>
+<div class="expect">
+  <p><strong>What this tests:</strong> how Krypa handles a page that holds a lot of memory (a web content process termination or memory warning).</p>
+  <p><strong>Expected correct result:</strong> the allocated total rises in 64 MB steps. Krypa either keeps the page running, or it reloads or shows a "page crashed" view. A silent hang with no feedback is a failure. Record the total at the moment the page stopped responding.</p>
+</div>
+<p>Allocated so far: <strong id="allocated" data-testid="allocated">0 MB</strong></p>
+<button id="btn-allocate" data-testid="btn-allocate" type="button">Allocate 64 MB (manual)</button>
+<button id="btn-release" data-testid="btn-release" type="button">Release all</button>
+<p><a id="link-back" href="index.html">Back to errors index</a></p>
+<script>
+(function () {
+  var CHUNK_MB = 64;
+  var blocks = [];
+  var allocated = 0;
+  function show() { document.getElementById('allocated').textContent = allocated + ' MB'; }
+  document.getElementById('btn-allocate').addEventListener('click', function () {
+    var MB = 1024 * 1024;
+    for (var i = 0; i < CHUNK_MB; i++) {
+      var block = new Uint8Array(MB);
+      // Touch every page so the memory is really committed.
+      for (var j = 0; j < MB; j += 4096) block[j] = 1;
+      blocks.push(block);
+    }
+    allocated += CHUNK_MB;
+    show();
+  });
+  document.getElementById('btn-release').addEventListener('click', function () {
+    blocks = [];
+    allocated = 0;
+    show();
+  });
+})();
+</script>
+</body>
+</html>

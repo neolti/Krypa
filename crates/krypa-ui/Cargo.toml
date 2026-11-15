@@ -1,0 +1,19 @@
+[package]
+name = "krypa-ui"
+description = "Krypa browser interface: egui design system and screens (platform independent)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+egui = { workspace = true, features = ["default_fonts"] }
+# Already in the lockfile through eframe; PNG only (the one format app icons need).
+image = { version = "0.25", default-features = false, features = ["png"] }
+krypa-apps = { path = "../krypa-apps" }
+krypa-core = { path = "../krypa-core" }
+krypa-engine-api = { path = "../krypa-engine-api" }
+krypa-navigation = { path = "../krypa-navigation" }
+url = { workspace = true }
+
+[lints]
+workspace = true

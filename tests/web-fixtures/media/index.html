@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: media (generated audio and video)</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+section{margin:20px 0;}
+audio,video{width:100%;max-width:480px;display:block;margin:8px 0;background:#000;}
+canvas{width:320px;height:180px;border:1px solid #888;display:block;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: media (generated audio and video)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> the audio and video elements with native controls. No media files are shipped: the page builds them in JavaScript when it loads.</p>
+  <p><strong>Expected correct result:</strong> the audio status reads "tone ready" and the audio player plays a 2-second 440 Hz tone when Play is pressed (play, pause and seek work). The video status reads "video ready" and the video plays about 2 seconds of a moving yellow square with a frame counter. If the status says a generated item could not be made, that is a WebView capability finding, not a fixture error. The page never links to an external file.</p>
+</div>
+
+<section>
+  <h2>Audio</h2>
+  <p id="audio-status" data-testid="audio-status">generating tone with OfflineAudioContext...</p>
+  <audio id="tone-audio" data-testid="tone-audio" controls preload="auto"></audio>
+</section>
+
+<section>
+  <h2>Video</h2>
+  <p id="video-status" data-testid="video-status">generating video from canvas...</p>
+  <canvas id="anim-canvas" data-testid="anim-canvas" width="320" height="180"></canvas>
+  <video id="canvas-video" data-testid="canvas-video" controls playsinline preload="auto"></video>
+</section>
+
+<script>
+(function () {
+  var audioStatus = document.getElementById('audio-status');
+  var videoStatus = document.getElementById('video-status');
+
+  function encodeWav(samples, sampleRate) {
+    var len = samples.length;
+    var buf = new ArrayBuffer(44 + len * 2);
+    var v = new DataView(buf);
+    function str(off, s) { for (var i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); }
+    str(0, 'RIFF'); v.setUint32(4, 36 + len * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, len * 2, true);
+    for (var i = 0; i < len; i++) {
+      var s = Math.max(-1, Math.min(1, samples[i]));
+      v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+
+  function makeTone() {
+    return new Promise(function (resolve, reject) {
+      var Ctor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!Ctor) { reject(new Error('OfflineAudioContext not available')); return; }
+      var rate = 22050, secs = 2;
+      var ctx = new Ctor(1, rate * secs, rate);
+      var osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = 440;
+      var gain = ctx.createGain();
+      gain.gain.value = 0.3;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(0);
+      osc.stop(secs);
+      var done = false;
+      function finish(buffer) {
+        if (done) return;
+        done = true;
+        resolve(encodeWav(buffer.getChannelData(0), rate));
+      }
+      ctx.oncomplete = function (e) { finish(e.renderedBuffer); };
+      var p = ctx.startRendering();
+      if (p && p.then) p.then(finish, reject);
+    });
+  }
+
+  function makeVideo() {
+    return new Promise(function (resolve, reject) {
+      var canvas = document.getElementById('anim-canvas');
+      if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
+        reject(new Error('MediaRecorder or canvas.captureStream is not available in this WebView'));
+        return;
+      }
+      var mime = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'].filter(function (t) {
+        return MediaRecorder.isTypeSupported(t);
+      })[0];
+      if (!mime) { reject(new Error('no supported video recording format')); return; }
+      var g = canvas.getContext('2d');
+      var frame = 0;
+      function draw() {
+        frame += 1;
+        g.fillStyle = '#103050';
+        g.fillRect(0, 0, 320, 180);
+        g.fillStyle = '#ffcc00';
+        g.fillRect((frame * 4) % 280, 70, 40, 40);
+        g.fillStyle = '#ffffff';
+        g.font = '20px sans-serif';
+        g.fillText('frame ' + frame, 10, 30);
+      }
+      var stream = canvas.captureStream(25);
+      var rec;
+      try { rec = new MediaRecorder(stream, { mimeType: mime }); } catch (e) { reject(e); return; }
+      var chunks = [];
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onerror = function (e) { reject(e.error || new Error('MediaRecorder error')); };
+      rec.onstop = function () { resolve(new Blob(chunks, { type: mime.split(';')[0] })); };
+      draw();
+      var timer = setInterval(draw, 40);
+      rec.start(200);
+      setTimeout(function () { clearInterval(timer); rec.stop(); }, 2000);
+    });
+  }
+
+  makeTone().then(function (blob) {
+    document.getElementById('tone-audio').src = URL.createObjectURL(blob);
+    audioStatus.textContent = 'tone ready: 440 Hz sine, 2 s, WAV generated in the page (' + blob.size + ' bytes)';
+  }).catch(function (err) {
+    audioStatus.textContent = 'audio not generated: ' + err.message;
+  });
+
+  makeVideo().then(function (blob) {
+    document.getElementById('canvas-video').src = URL.createObjectURL(blob);
+    videoStatus.textContent = 'video ready: about 2 s of canvas animation recorded in the page (' + blob.size + ' bytes, ' + blob.type + ')';
+  }).catch(function (err) {
+    videoStatus.textContent = 'video not generated: ' + err.message;
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: forms</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+label{display:block;margin:12px 0;}
+input,textarea,select{display:block;width:100%;box-sizing:border-box;font-size:16px;padding:8px;margin-top:4px;}
+fieldset{margin:12px 0;border:1px solid #ccc;}
+dt{font-weight:600;margin-top:8px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: forms</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> keyboard and autofill behaviour for each input type, autofocus, autocomplete hints, and form submission.</p>
+  <p><strong>Expected correct result:</strong> the Full name field has focus when the page loads (autofocus-status reads "yes"). Email, number and date fields show their type-specific keyboard or picker. The password value is masked. Submitting with an empty Full name is blocked by the browser. After a valid submit, the "Submitted values" list shows every value you entered. The password is shown only as a character count. Nothing is sent anywhere.</p>
+</div>
+<p>Autofocus status: <strong id="autofocus-status" data-testid="autofocus-status">(script)</strong></p>
+<form id="demo-form" autocomplete="on">
+  <label>Full name (text, required, autofocus, autocomplete="name")
+    <input id="full-name" name="fullName" type="text" required autofocus autocomplete="name">
+  </label>
+  <label>Email (email, autocomplete="email")
+    <input id="email" name="email" type="email" autocomplete="email">
+  </label>
+  <label>Password (password, autocomplete="new-password")
+    <input id="password" name="password" type="password" autocomplete="new-password">
+  </label>
+  <label>Age (number, min 0, max 150, autocomplete="off")
+    <input id="age" name="age" type="number" min="0" max="150" step="1" autocomplete="off">
+  </label>
+  <label>Birthday (date, autocomplete="bday")
+    <input id="birthday" name="birthday" type="date" autocomplete="bday">
+  </label>
+  <label>Notes (textarea)
+    <textarea id="notes" name="notes" rows="3"></textarea>
+  </label>
+  <label>Colour (select)
+    <select id="colour" name="colour">
+      <option value="">Choose one</option>
+      <option value="red">Red</option>
+      <option value="blue">Blue</option>
+    </select>
+  </label>
+  <label><input id="newsletter" name="newsletter" type="checkbox" value="yes" style="display:inline;width:auto;"> Subscribe to newsletter (checkbox)</label>
+  <fieldset>
+    <legend>Plan (radio group)</legend>
+    <label><input id="plan-free" name="plan" type="radio" value="free" checked style="display:inline;width:auto;"> Free</label>
+    <label><input id="plan-pro" name="plan" type="radio" value="pro" style="display:inline;width:auto;"> Pro</label>
+  </fieldset>
+  <button id="submit-btn" type="submit">Submit</button>
+</form>
+<h2>Submitted values</h2>
+<dl id="result" data-testid="result"><dt>Not submitted yet</dt><dd>Fill the form and press Submit.</dd></dl>
+<script>
+(function () {
+  var form = document.getElementById('demo-form');
+  var focused = document.activeElement && document.activeElement.id;
+  document.getElementById('autofocus-status').textContent = focused === 'full-name' ? 'yes' : 'no (focused: ' + (focused || 'none') + ')';
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var fd = new FormData(form);
+    var result = document.getElementById('result');
+    result.textContent = '';
+    function row(label, value, testid) {
+      var dt = document.createElement('dt');
+      dt.textContent = label;
+      var dd = document.createElement('dd');
+      dd.textContent = value;
+      dd.setAttribute('data-testid', testid);
+      result.appendChild(dt);
+      result.appendChild(dd);
+    }
+    var pw = fd.get('password') || '';
+    row('fullName', fd.get('fullName') || '(empty)', 'result-fullName');
+    row('email', fd.get('email') || '(empty)', 'result-email');
+    row('password', pw ? '(' + pw.length + ' characters, not displayed)' : '(empty)', 'result-password');
+    row('age', fd.get('age') || '(empty)', 'result-age');
+    row('birthday', fd.get('birthday') || '(empty)', 'result-birthday');
+    row('notes', fd.get('notes') || '(empty)', 'result-notes');
+    row('colour', fd.get('colour') || '(empty)', 'result-colour');
+    row('newsletter', fd.get('newsletter') || '(unchecked, not sent)', 'result-newsletter');
+    row('plan', fd.get('plan') || '(none)', 'result-plan');
+  });
+})();
+</script>
+</body>
+</html>

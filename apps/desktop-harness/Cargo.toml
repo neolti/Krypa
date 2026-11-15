@@ -1,0 +1,36 @@
+[package]
+name = "desktop-harness"
+description = "Development-only desktop harness for krypa-ui with a fake engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "desktop_harness"
+
+[[bin]]
+name = "desktop-harness"
+path = "src/main.rs"
+# The binary has no tests of its own; skipping its test target keeps `cargo test` from
+# running an eframe-linked executable.
+test = false
+
+[dependencies]
+eframe = { workspace = true }
+# PNG only, already in the lockfile through eframe: the fake host draws icon PNGs.
+image = { version = "0.25", default-features = false, features = ["png"] }
+krypa-apps = { path = "../../crates/krypa-apps" }
+krypa-core = { path = "../../crates/krypa-core" }
+krypa-engine-api = { path = "../../crates/krypa-engine-api" }
+krypa-navigation = { path = "../../crates/krypa-navigation" }
+krypa-storage = { path = "../../crates/krypa-storage" }
+krypa-ui = { path = "../../crates/krypa-ui" }
+url = { workspace = true }
+
+[dev-dependencies]
+rusqlite = { workspace = true }
+tempfile = "3"
+
+[lints]
+workspace = true

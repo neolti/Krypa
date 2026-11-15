@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixtures - index</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+ul{padding-left:18px;}
+li{margin:8px 0;}
+.note{background:#fff7d6;border:1px solid #d8c36b;padding:8px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixtures - index</h1>
+<p class="note">Controlled test pages for the Krypa WebKit browser. Each fixture page states what it tests and the correct result on screen. Serve this folder over http (see README.md); do not open the files with file://.</p>
+<ul>
+  <li><a id="link-basic" href="basic/index.html">basic</a>: plain pages, anchors, long scrolling page</li>
+  <li><a id="link-multi-page" href="multi-page/index.html">multi-page</a>: back/forward history and per-page visit counter</li>
+  <li><a id="link-spa" href="spa/index.html">spa</a>: history.pushState routing, popstate, deep links</li>
+  <li><a id="link-forms" href="forms/index.html">forms</a>: input types, autofocus, autocomplete, submit display</li>
+  <li><a id="link-auth" href="auth/index.html">auth</a>: fake login with cookie and localStorage, sign-out</li>
+  <li><a id="link-upload" href="upload/index.html">upload</a>: file inputs (single, multiple, image capture), no upload</li>
+  <li><a id="link-media" href="media/index.html">media</a>: generated audio and video with controls</li>
+  <li><a id="link-manifest-app" href="manifest-app/index.html">manifest-app</a>: web app manifest, plus three negative manifests</li>
+  <li><a id="link-service-worker" href="service-worker/index.html">service-worker</a>: registration, cache source, offline page</li>
+  <li><a id="link-external-links" href="external-links/index.html">external-links</a>: target=_blank, window.open, mailto, tel, custom scheme, javascript:, data:</li>
+  <li><a id="link-cross-origin" href="cross-origin/index.html">cross-origin</a>: two origins, redirects, iframe postMessage (needs port 8766)</li>
+  <li><a id="link-errors" href="errors/index.html">errors</a>: 404, refused connection, invalid host, manual memory use</li>
+  <li><a id="link-permissions" href="permissions/index.html">permissions</a>: geolocation, camera, microphone, notifications</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[package]
+name = "krypa-apps"
+description = "Web App Manifest parsing and validation for Krypa installed apps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

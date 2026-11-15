@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: service-worker</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+.warn{background:#fff7d6;border:1px solid #d8c36b;padding:8px;border-radius:6px;}
+dt{font-weight:600;margin-top:8px;}
+button{font-size:16px;padding:10px 14px;margin:6px 6px 6px 0;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: service-worker</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> service worker registration, control of the page, Cache Storage responses, and offline navigation to a cached fallback page.</p>
+  <p><strong>Expected correct result:</strong> on a secure origin (localhost) with service workers available, "Registration state" becomes "active" within a few seconds. After one reload the page is "controlled". Press "Probe cached file": the header source reads "cache" once the file is cached. Going offline and opening "offline-check.html" shows the offline page from the cache instead of a network error. Online, the same link returns a 404 from the server, which is correct.</p>
+</div>
+<div class="warn" id="sw-unavailable" data-testid="sw-unavailable" hidden>
+  <p><strong>navigator.serviceWorker is unavailable in this context.</strong> This is expected in some WKWebView configurations (and on non-secure origins). It is a finding to record, not a fixture error. Offline and cache checks cannot run here.</p>
+</div>
+<dl>
+  <dt>Service worker API</dt><dd id="sw-support" data-testid="sw-support">(script)</dd>
+  <dt>Secure context (isSecureContext)</dt><dd id="secure-context" data-testid="secure-context">(script)</dd>
+  <dt>Registration state</dt><dd id="sw-reg-state" data-testid="sw-reg-state">(script)</dd>
+  <dt>Page controlled by a service worker</dt><dd id="sw-controller" data-testid="sw-controller">(script)</dd>
+  <dt>Probe source (X-Krypa-Source header)</dt><dd id="probe-source" data-testid="probe-source">not probed yet</dd>
+</dl>
+<button id="btn-probe" data-testid="btn-probe" type="button">Probe cached file</button>
+<button id="btn-unregister" data-testid="btn-unregister" type="button">Unregister service worker</button>
+<p><a id="link-offline-check" data-testid="link-offline-check" href="offline-check.html">offline-check.html (not a real file: online it gives 404, offline it gives the cached offline page)</a></p>
+<p><a id="link-offline-page" href="offline.html">Open the offline page directly</a></p>
+<script>
+(function () {
+  function set(id, text) { document.getElementById(id).textContent = text; }
+  set('secure-context', String(window.isSecureContext));
+
+  if (!('serviceWorker' in navigator)) {
+    set('sw-support', 'unavailable: navigator.serviceWorker is missing');
+    document.getElementById('sw-unavailable').hidden = false;
+    set('sw-reg-state', 'not run');
+    set('sw-controller', 'not run');
+    return;
+  }
+  set('sw-support', 'available');
+
+  function regState(reg) {
+    if (reg.active) return reg.active.state;
+    if (reg.installing) return 'installing (' + reg.installing.state + ')';
+    if (reg.waiting) return 'waiting';
+    return 'no worker';
+  }
+
+  function updateControl() {
+    set('sw-controller', navigator.serviceWorker.controller
+      ? 'yes (controlled)'
+      : 'no (reload once after the worker is active)');
+  }
+
+  navigator.serviceWorker.register('sw.js', { scope: './' })
+    .then(function (reg) {
+      set('sw-reg-state', regState(reg));
+      updateControl();
+      return navigator.serviceWorker.ready.then(function (ready) {
+        set('sw-reg-state', regState(ready));
+        updateControl();
+      });
+    })
+    .catch(function (err) {
+      set('sw-reg-state', 'register failed: ' + err.name + ' ' + err.message);
+    });
+
+  navigator.serviceWorker.addEventListener('controllerchange', updateControl);
+
+  document.getElementById('btn-probe').addEventListener('click', function () {
+    set('probe-source', 'probing...');
+    fetch('probe.txt', { cache: 'no-store' })
+      .then(function (r) {
+        var src = r.headers.get('X-Krypa-Source');
+        set('probe-source', (src || 'no header (service worker did not answer)') + ' | HTTP ' + r.status);
+      })
+      .catch(function (err) { set('probe-source', 'fetch failed: ' + err.message); });
+  });
+
+  document.getElementById('btn-unregister').addEventListener('click', function () {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      return Promise.all(regs.map(function (r) { return r.unregister(); }));
+    }).then(function () {
+      set('sw-reg-state', 'unregistered (reload to re-register)');
+      updateControl();
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: basic - index</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+nav a{display:inline-block;margin:4px 8px 4px 0;}
+section{margin-top:32px;}
+</style>
+</head>
+<body id="top">
+<h1>Krypa fixture: basic (index page)</h1>
+<div class="expect" id="about">
+  <p><strong>What this tests:</strong> plain navigation between pages, same-page anchors, and scrolling to an anchor in a long page.</p>
+  <p><strong>Expected correct result:</strong> each link opens the named page; "Jump to section B" scrolls to the section below without leaving this page; "Back to top" returns to the top; the link to the long page opens it.</p>
+</div>
+<nav>
+  <a id="link-second" href="second.html">Go to second.html</a>
+  <a id="link-third" href="third.html">Go to third.html</a>
+  <a id="link-long" href="long.html">Go to long.html</a>
+  <a id="link-long-section-60" href="long.html#section-60">Go to long.html#section-60</a>
+</nav>
+<p><a id="link-anchor-b" href="#section-b">Jump to section B (same page anchor)</a></p>
+<p><a id="link-anchor-top" href="#top">Back to top</a></p>
+<section id="section-a">
+  <h2>Section A</h2>
+  <p>Filler text so the page is taller than a phone screen. Filler text so the page is taller than a phone screen.</p>
+</section>
+<section id="section-b" data-testid="section-b">
+  <h2>Section B</h2>
+  <p>Reached by the same-page anchor link above. The URL should end with #section-b and the page should not reload.</p>
+</section>
+<section id="section-c">
+  <h2>Section C</h2>
+  <p>Filler text. Scroll position should be restored correctly when returning from another page.</p>
+</section>
+<p id="end-of-page" data-testid="end-of-page">End of index page.</p>
+</body>
+</html>

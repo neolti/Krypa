@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: manifest-app negative - cross-origin start_url</title>
+<link rel="manifest" href="manifest-cross-origin.webmanifest">
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: manifest-app negative (cross-origin start_url)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> a manifest whose start_url is on a different origin (http://127.0.0.1:8766) than this page (the fixture server on port 8765).</p>
+  <p><strong>Expected correct result:</strong> the browser must not install or launch an app that starts on the other origin. Either the manifest is rejected, or the start_url is ignored and a same-origin default is used. Opening the app must never load 127.0.0.1:8766 as the app's own page.</p>
+  <p>Requires the second server on port 8766 to be running for the start_url to be reachable; the test is about the browser decision, not about the server.</p>
+</div>
+<p><a id="link-back" href="index.html">Back to manifest-app index</a></p>
+</body>
+</html>

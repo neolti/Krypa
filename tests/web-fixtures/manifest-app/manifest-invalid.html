@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: manifest-app negative - invalid JSON</title>
+<link rel="manifest" href="manifest-invalid.webmanifest">
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: manifest-app negative (invalid JSON manifest)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> the linked manifest file is deliberately not valid JSON (trailing comma and missing closing brace).</p>
+  <p><strong>Expected correct result:</strong> the browser ignores the manifest without crashing or hanging. This page still renders normally, and no install metadata from that file is used. Nothing in the browser UI shows the name "Krypa Invalid Manifest Test" as an installed app.</p>
+</div>
+<p><a id="link-back" href="index.html">Back to manifest-app index</a></p>
+</body>
+</html>

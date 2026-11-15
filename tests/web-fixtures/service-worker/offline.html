@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: service-worker - offline page</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: service-worker (offline page)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> this page is precached by the service worker. It is shown when a navigation fails at the network level.</p>
+  <p><strong>Expected correct result:</strong> when the offline check link is followed while offline, this page is shown from the cache. The heading and the text below must be visible.</p>
+</div>
+<p id="offline-message" data-testid="offline-message"><strong>You are offline.</strong> This page was served by the service worker from the cache.</p>
+<p><a id="link-home" href="index.html">Back to service-worker index</a></p>
+</body>
+</html>

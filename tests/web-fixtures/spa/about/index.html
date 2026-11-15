@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: spa - about (deep link)</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+nav a{display:inline-block;margin:4px 8px 4px 0;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: spa (about deep link)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> this file is the deep-link target for /spa/about/. Reloading this URL must work.</p>
+  <p><strong>Expected correct result:</strong> the "current route" box reads /spa/about/ and the view reads "about" after a fresh load, and also after pushState from Home.</p>
+</div>
+<nav>
+  <a data-spa href="/spa/">Home</a>
+  <a data-spa href="/spa/items/42/">Item 42</a>
+</nav>
+<dl>
+  <dt>Current route (location.pathname)</dt><dd id="current-route" data-testid="current-route">(script)</dd>
+  <dt>Current view</dt><dd id="current-view" data-testid="current-view">(script)</dd>
+  <dt>View text</dt><dd id="view-text" data-testid="view-text">(script)</dd>
+  <dt>history.length</dt><dd id="route-count">(script)</dd>
+</dl>
+<script src="../app.js"></script>
+</body>
+</html>

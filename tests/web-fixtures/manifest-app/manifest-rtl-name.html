@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: manifest-app negative - RTL override in name</title>
+<link rel="manifest" href="manifest-rtl-name.webmanifest">
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: manifest-app negative (RTL override in name)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> the manifest name contains U+202E (RIGHT-TO-LEFT OVERRIDE), written in the JSON file as the escape ‮ so the file itself is plain ASCII. The name is "Krypa demo app name (RTL override test)" with the override before "demo".</p>
+  <p><strong>Expected correct result:</strong> the browser stores the name intact and does not let the override reorder the surrounding UI text (for example the install prompt, the home-screen label, or the tab). If the browser displays the name, the override must be neutralised or escaped. Text that appears reversed in the surrounding UI is a failure.</p>
+</div>
+<p><a id="link-back" href="index.html">Back to manifest-app index</a></p>
+</body>
+</html>

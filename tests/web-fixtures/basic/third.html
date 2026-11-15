@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: basic - third page</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: basic (third page)</h1>
+<div class="expect">
+  <p><strong>What this tests:</strong> a plain page loads from a link, and a link can target an anchor in another page.</p>
+  <p><strong>Expected correct result:</strong> this heading reads "third page"; the link below opens the long page scrolled to section 60.</p>
+</div>
+<p><a id="link-index" href="index.html">Back to index.html</a></p>
+<p><a id="link-long-section-60" href="long.html#section-60">Go to long.html#section-60</a></p>
+</body>
+</html>

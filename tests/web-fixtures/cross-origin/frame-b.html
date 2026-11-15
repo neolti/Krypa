@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: cross-origin - frame from origin B</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:12px;line-height:1.4;font-size:15px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: frame from origin B</h1>
+<p>Frame from origin B ready. This page is meant to be loaded inside an iframe on origin A (localhost:8765). It answers postMessage pings only from origin A.</p>
+<p id="frame-status" data-testid="frame-status">frame from origin B ready</p>
+<script>
+(function () {
+  var PARENT_ORIGIN = 'http://localhost:8765';
+  // Announce readiness to the parent (origin A only).
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: 'krypa-frame-ready', origin: location.origin }, PARENT_ORIGIN);
+  }
+  window.addEventListener('message', function (e) {
+    if (e.origin !== PARENT_ORIGIN || !e.data || e.data.type !== 'krypa-ping') return;
+    e.source.postMessage({ type: 'krypa-frame-pong', nonce: e.data.nonce, origin: location.origin }, e.origin);
+  });
+})();
+</script>
+</body>
+</html>

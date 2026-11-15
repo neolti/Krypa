@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypa fixture: cross-origin (origin A)</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;line-height:1.4;}
+.expect{background:#e6f4ea;border:1px solid #7bb88a;padding:8px;border-radius:6px;}
+.setup{background:#eef3ff;border:1px solid #9fb6e8;padding:8px;border-radius:6px;}
+.warn{background:#fff7d6;border:1px solid #d8c36b;padding:8px;border-radius:6px;}
+iframe{width:100%;height:160px;border:2px solid #333;border-radius:6px;}
+button{font-size:16px;padding:10px 14px;margin:6px 6px 6px 0;}
+dt{font-weight:600;margin-top:8px;}
+</style>
+</head>
+<body>
+<h1>Krypa fixture: cross-origin (origin A)</h1>
+<div class="setup">
+  <p><strong>Setup: two origins.</strong> This page is origin A: http://localhost:8765. Origin B is http://127.0.0.1:8766, the same fixture folder served on a second port. Start both servers from the fixtures folder (see README.md). Different host or port means a different origin.</p>
+  <p>Origin B used by this fixture: <strong id="origin-b">http://127.0.0.1:8766</strong></p>
+</div>
+<div class="expect">
+  <p><strong>What this tests:</strong> navigation and redirects between origins, and an iframe from origin B that talks to this page with postMessage.</p>
+  <p><strong>Expected correct result:</strong> "Origin B reachable" reads "yes". Pressing "Redirect test" lands on origin B after about 1.5 s and shows "arrived at origin B". The iframe shows "frame from origin B ready". "Ping frame" gets a pong with a matching nonce. "Access iframe DOM" reports "blocked (null)". Messages from any other origin are ignored and logged.</p>
+</div>
+<div class="warn" id="origin-b-warning" data-testid="origin-b-warning" hidden>
+  <p><strong>Origin B is not reachable.</strong> Start the second server on port 8766 (README.md). Until then, the redirect and iframe results cannot pass.</p>
+</div>
+<dl>
+  <dt>This origin (location.origin)</dt><dd id="origin-a" data-testid="origin-a">(script)</dd>
+  <dt>Origin B reachable</dt><dd id="origin-b-status" data-testid="origin-b-status">checking...</dd>
+  <dt>Last postMessage from frame</dt><dd id="last-message" data-testid="last-message">none</dd>
+  <dt>Pong nonce matched</dt><dd id="pong-status" data-testid="pong-status">not pinged</dd>
+  <dt>Iframe DOM access</dt><dd id="dom-status" data-testid="dom-status">not tested</dd>
+  <dt>Messages ignored (other origins)</dt><dd id="ignored-count" data-testid="ignored-count">0</dd>
+</dl>
+<p><a id="link-redirect" data-testid="link-redirect" href="redirect-a.html">Redirect test (A to B)</a></p>
+<p><a id="link-origin-b" data-testid="link-origin-b" href="http://127.0.0.1:8766/cross-origin/redirect-b.html">Navigate to origin B directly</a></p>
+<h2>Iframe from origin B</h2>
+<iframe id="other-frame" data-testid="other-frame" title="Frame from origin B" src="http://127.0.0.1:8766/cross-origin/frame-b.html"></iframe>
+<p><button id="btn-ping" data-testid="btn-ping" type="button">Ping frame</button>
+<button id="btn-dom" data-testid="btn-dom" type="button">Access iframe DOM</button></p>
+<script>
+(function () {
+  var OTHER = 'http://127.0.0.1:8766';
+  var counts = { ignored: 0 };
+  function set(id, text) { document.getElementById(id).textContent = text; }
+
+  set('origin-a', location.origin);
+
+  fetch(OTHER + '/cross-origin/frame-b.html', { mode: 'no-cors', cache: 'no-store' })
+    .then(function () {
+      set('origin-b-status', 'yes');
+    })
+    .catch(function () {
+      set('origin-b-status', 'no');
+      document.getElementById('origin-b-warning').hidden = false;
+    });
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== OTHER || !e.data || typeof e.data !== 'object') {
+      counts.ignored += 1;
+      set('ignored-count', String(counts.ignored));
+      return;
+    }
+    if (e.data.type === 'krypa-frame-ready') {
+      set('last-message', 'krypa-frame-ready from ' + e.origin);
+    }
+    if (e.data.type === 'krypa-frame-pong') {
+      set('last-message', 'krypa-frame-pong from ' + e.origin);
+      set('pong-status', e.data.nonce === window.__lastNonce ? 'matched (' + e.data.nonce + ')' : 'MISMATCH');
+    }
+  });
+
+  document.getElementById('btn-ping').addEventListener('click', function () {
+    var frame = document.getElementById('other-frame');
+    window.__lastNonce = String(Date.now());
+    frame.contentWindow.postMessage({ type: 'krypa-ping', nonce: window.__lastNonce }, OTHER);
+    set('pong-status', 'ping sent, waiting for pong');
+  });
+
+  document.getElementById('btn-dom').addEventListener('click', function () {
+    var frame = document.getElementById('other-frame');
+    try {
+      var doc = frame.contentDocument;
+      set('dom-status', doc === null ? 'blocked (null), as expected' : 'ACCESSIBLE (unexpected for a different origin)');
+    } catch (err) {
+      set('dom-status', 'blocked (' + err.name + '), as expected');
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+# Krypa architecture (Phase 0 result)
+
+Date: 2026-11-13. Author: WP-R. Supersedes PLAN.md section 1 where they differ. Source detail and links live in [IOS_INTEGRATION.md](IOS_INTEGRATION.md), [ANDROID_INTEGRATION.md](ANDROID_INTEGRATION.md), [APP_STORE_COMPLIANCE.md](APP_STORE_COMPLIANCE.md); decisions in [adr/0001-integration-model.md](adr/0001-integration-model.md); risks in [RISKS.md](RISKS.md).
+
+Marking: **V-doc** = confirmed by a linked primary source (links are in the detail docs and repeated where load-bearing). **U** = assumption or inference. Nothing is verified on a device; no code was built or run. "Confirmed" below means "the documentation supports it", not "it works".
+
+## 1. Verdict on each item of PLAN.md section 1
+
+| # | Plan item | Verdict | Reason (one line) |
+|---|---|---|---|
+| 1 | UIKit owns process and run loop; Rust is a static lib; no eframe/winit on iOS; egui driven from `CADisplayLink` | **Confirmed (U on integration effort)** | egui-wgpu does not require winit (winit is an optional feature) and `Context::run_ui`, `tessellate`, `Renderer::{update_texture, update_buffers, render}` are public; no complete egui + Swift host example exists, so all input glue is Krypa's. |
+| 2 | `CAMetalLayer`-backed UIView; wgpu surface from the layer; redraw on demand | **Confirmed** | `SurfaceTargetUnsafe::CoreAnimationLayer(*mut c_void)` (cfg `metal`) + `Instance::create_surface_unsafe` are real wgpu 30.0.2 API; egui offers `request_repaint_after` and a `Send + Sync` repaint callback. Swift must set `contentsScale`; wgpu does not. |
+| 3 | WKWebView is a sibling native view composited by the OS; no screenshots | **Confirmed** | Nothing in the docs requires web content to pass through Krypa's renderer; `takeSnapshot` exists but is not needed. |
+| 4 | Explicit touch routing: Rust view overrides hit-testing using published rects | **Confirmed with a change** | UIKit documents `hitTest` returning `nil` as fall-through. Change: do not default to a permanent full-screen transparent layer; shrink the Rust view's frame to the chrome region when no sheet is open (cost of a full-screen non-opaque layer is U). Rects are one frame stale (U). |
+| 5 | FFI: narrow C ABI for hot path + command/event API (UniFFI vs C ABI) | **Overturned in part** | Choose UniFFI (proc-macro) for the whole surface, with the raw layer pointer passed as `u64`. Keep a hand-written C ABI only as an escape hatch if touch/frame call overhead measures badly (U). Two bindings by default is extra cost without evidence. See section 5. |
+| 6 | Engine abstraction is command/event, never sync getters | **Confirmed with one exception** | WKWebView APIs are async/callback based, so command/event fits. Exception: navigation-policy decisions must be answered inside the delegate callback; allow a pure, I/O-free, synchronous Rust function for that (U that a main-thread call into Rust is fast enough). |
+| 7 | SQLite for Krypa metadata; WebKit owns cookies/caches via `WKWebsiteDataStore` | **Confirmed** | `default()`, `nonPersistent()`, `init(forIdentifier:)` (iOS 17+), `remove(forIdentifier:)`, `fetchAllDataStoreIdentifiers` exist; Krypa stores only profile UUIDs and names. Profiles require iOS 17. |
+| 8 | Android: WPE WebKit is a research item | **Confirmed; recommendation "needs spike"** | Active in 2026 but small-team, pre-1.0 packaging, Krypa would own security updates. Default Android engine if Android is ever committed: System WebView. See ANDROID_INTEGRATION.md. |
+
+## 2. Layering (target)
+
+```
+Swift (UIKit app, scenes, WKWebView, UITextInput, accesskit hosting)
+   |  UniFFI-generated Swift API (calls main thread; callbacks hop to main)
+Rust: krypa-ios-ffi (new, thin; only crate with unsafe)       <- platforms/ios
+   |   owns: wgpu surface, egui Context, egui_wgpu::Renderer, input queue
+Rust: krypa-ui (egui screens)  --->  krypa-core (state machine, SessionManager)
+                                       |-- krypa-engine-api (commands/events, capabilities)
+                                       |-- krypa-navigation, krypa-apps, krypa-storage
+```
+
+`krypa-ios-ffi` is not in PLAN.md section 2. It is the only place that needs `unsafe` (raw `CAMetalLayer` pointer passed to `create_surface_unsafe`, an `unsafe fn`, V-doc). PLAN.md's "no `unsafe`" rule must be scoped to the WP-1..5 crates, with a documented exception here (guideline conflict surfaced per Rule 0). UniFFI-generated scaffolding also contains unsafe, but it is generated code (U).
+
+## 3. Data flow per frame (iOS)
+
+1. UIKit event (touch, key, IME, safe-area, size change) arrives on the main thread in the Rust view.
+2. Swift calls `push_*` methods on the Rust handle; Rust queues `egui::Event`s.
+3. `CADisplayLink` tick (or repaint request) calls `frame(now)`: Rust builds `RawInput`, runs `Context::run_ui`, then handles `FullOutput`: apply `textures_delta`, `tessellate`, `get_current_texture`, render, `Queue::present` (wgpu 30).
+4. Rust returns a small `FrameResult` (or fires events): published hit-test rects, whether to keep the display link running, IME/keyboard wanted, clipboard commands, accesskit tree update.
+5. Rust core emits `EngineCommand`s; Swift's engine adapter executes them on `WKWebView` and reports `EngineEvent`s back.
+
+Everything is main-thread affine by convention. UniFFI requires Rust objects to be `Send + Sync` and forbids `&mut self` methods (V-doc [UniFFI interfaces](https://mozilla.github.io/uniffi-rs/latest/types/interfaces.html)), so the handle holds interior-mutable state behind a mutex; the main-thread rule is enforced by a Swift `@MainActor` wrapper (U). The egui repaint callback is `Send + Sync` and may fire from any thread (V-doc signature), so it may only set a flag and schedule onto the main thread.
+
+## 4. Engine abstraction (item 6) notes for WP-3
+
+- `EngineCapabilities` must at least carry: `service_workers`, `passkeys`, `add_to_home_screen`, `persistent_profiles` (needs iOS 17), `private_sessions`, `content_blocking`, `app_bound_domains` (always false). On iOS, service workers, passkeys and Add to Home Screen depend on holding `com.apple.developer.web-browser` (V-doc [Apple](https://developer.apple.com/tutorials/data/documentation/xcode/preparing-your-app-to-be-the-default-browser.json); passkeys per an Apple engineer forum answer, [thread 837755](https://developer.apple.com/forums/thread/837755)). The capability must be a runtime value, not a constant, because the entitlement may be absent in a given build.
+- `EngineEvent::ContentProcessTerminated` maps to `webViewWebContentProcessDidTerminate(_:)` (V-doc, iOS 9+).
+- Suspended vs Terminated: WKWebView has no public "suspend this view" call that was found. "Suspended" on iOS means the view is detached/paused by Krypa (U, e.g. removed from the hierarchy, media paused); the OS may still terminate its content process. WP-3 must not assume Krypa can force-suspend. Needs a device spike (U).
+- New-window requests map to `webView(_:createWebViewWith:for:windowFeatures:) -> WKWebView?` (V-doc); the delegate must return a web view synchronously or `nil`, so the new-window policy (reject / open as new session) must be decidable immediately (the same pure-function exception as item 6).
+- Connection security is `EngineEvent::SecurityChanged { session, security: ConnectionSecurity::{Secure, Insecure, CertificateError} }`, the single source of truth; `krypa-navigation::SecurityState` is only the UI-side type it is mapped to. Expected iOS sources (all U, to confirm on device): the server-trust authentication challenge in `didReceive challenge` (before the commit), `WKWebView.hasOnlySecureContent` (after it), and the committed URL scheme. The engine sends nothing when it has nothing confirmed; `krypa-core` then keeps `SessionInfo::security == None` ("not verified", shown as such, never as secure). Rules in core: `NavigationPhase::Started` clears it; a report made while loading applies only when that page commits; every `Committed` replaces it (no report means `None`); a TLS `LoadFailed` is `CertificateError` and a late `Secure` cannot undo it; any other failure, a crash or a lost view clears it; `Secure` on a non-`https` URL is downgraded to `Insecure`. No mixed-content variant yet: an `https` page with insecure subresources is reported as `Insecure`. The adapter must send a report for every committed document, including same-document navigations it surfaces as `Committed`.
+- Permission requests map to `requestMediaCapturePermissionFor` and `requestDeviceOrientationAndMotionPermissionFor` (V-doc); both take a `decisionHandler`, so they are naturally async. The reply path is `EngineCommand::RespondToPermission`.
+- Manifest fetch (Add to Krypa): `EngineCommand::FetchManifest { session, request: ManifestRequestId, max_bytes }` answered by exactly one `EngineEvent::ManifestFetched { session, request, result }` with `ManifestResult::{Found { manifest_url, bytes }, NotFound, Failed(ManifestFailure)}`. It goes through the engine because only the engine sees the page's `<link rel="manifest">` and can fetch with that page's cookies and credentials mode (the iOS approach, U, is IOS_INTEGRATION.md 5.4). `max_bytes` is `krypa_apps::MAX_MANIFEST_BYTES` (256 KiB): real manifests are a few KiB, so this leaves large icon and shortcut lists room while bounding memory and parse cost; the adapter stops reading at it (`Failed(TooLarge)`) and the core re-checks anyway. The core issues the request ids and keeps one pending request per session together with the document URL it was made for (the core's own record, never one the adapter reports). Every document change (navigation started or committed, load failure, crash, view loss) drops it, so an answer for a page the session has left finds no matching request and is discarded; the same happens to a replaced, repeated or unsolicited answer. A same-document navigation that an adapter surfaces as `Committed` also drops it (the user just taps Add again).
+- Install flow: UI `Intent::AddToKrypa` -> `SessionManager::request_install` -> `FetchManifest` -> `ManifestFetched` -> `Notice::InstallCandidate { app, source }` -> the install dialog (name and origin, Cancel is the default) -> `Intent::ConfirmInstall` -> `Storage::save_app`. The candidate comes from `Manifest::parse` + `InstalledApp::from_manifest` (origin binding, sanitized name, https-only icons). Anything unusable (no manifest, delivery failed, over the cap, not UTF-8 or JSON, a plain-`http` manifest URL for an `https` page, a non-web manifest URL) falls back to `InstalledApp::manual` and the dialog says so (`InstallSource::Manual(ManualReason)`); the manifest's content is ignored in that case. Nothing is saved before the user confirms.
+- App icons: the Rust core opens no sockets. The host fetches (`IconFetchRequest { url, max_bytes }` -> `IconFetchResponse`, not session-bound, so no `EngineEvent` is used): `https` only, no cookies or credentials, redirects stay `https`, stops at `max_bytes`. The UI asks with `Intent::FetchIcon(url)` (once per URL); `krypa_ui::app_icons::decode_icon` is a pure function the shell runs off the UI thread (PNG only; at most 512 KiB, 512 x 512 pixels, 8 MiB decoder allocation; panics are caught) and `IconStore::finish` records the image or the failure, which shows the monogram. Textures are uploaded once and cached by icon URL. Memory only: `krypa-storage` keeps icon URLs, not bytes, so a restart fetches again. Choice: best `any` icon, else best `maskable` one; a maskable icon is shown as its W3C safe zone (the central 80%) in the round badge, an `any` icon whole inside the circle; `monochrome` is never used.
+- External open: `ExternalSchemeRequested` and the `NewWindowRequested` external case carry `user_gesture`. The core drops (no prompt, debug log) a request without a gesture, from a session that is not the foreground one, or while the session already has a prompt pending (the first stays, repeats are dropped, not coalesced). Web schemes and the schemes `krypa_navigation::is_blocked_scheme` lists (javascript, data, file, blob, about, view-source, ftp, ws, ...) are `CoreError::UnsafeExternalScheme` and never reach a dialog. The pending prompt is core state (`SessionManager::pending_external_open`, named origin included) and is dropped when the page changes or goes to the background. The dialog (Cancel default, Escape cancels) answers with `Intent::RespondExternalOpen { session, allow }`; only `allow` makes the core emit `EngineCommand::OpenExternal { session, url }` with the URL it kept, which the adapter hands to the OS (the harness logs it).
+
+## 5. FFI decision (summary; full reasoning in ADR-0001)
+
+Recommendation: **UniFFI 0.32.x, proc-macro mode, single binding surface.** Reasons, each tied to a source:
+
+- Command/event types are enums with data and records; UniFFI generates typed Swift for them (V-doc [UniFFI overview](https://mozilla.github.io/uniffi-rs/latest/)). A hand-written C ABI would need manual encoding of `EngineCommand`/`EngineEvent` (e.g. a serialized byte buffer plus a hand-written Swift decoder), which is more code for Krypa to keep correct.
+- Swift implements Rust traits via foreign traits: the platform adapter can be a Swift class implementing a Rust `EngineAdapter` trait. The older "callback interfaces" are "(soft) deprecated" in favour of foreign traits (V-doc [callback interfaces](https://mozilla.github.io/uniffi-rs/latest/types/callback_interfaces.html)); foreign implementations must be thread-safe because Rust cannot enforce it on the foreign side (same page). The foreign-traits page itself could not be fetched (404), so details of foreign-trait threading are U.
+- Swift 6: "Most generated code will conform to `Sendable`" but async code does not yet (issue #2448), and an implemented foreign trait must be `Sendable` (V-doc [Swift overview](https://mozilla.github.io/uniffi-rs/latest/swift/overview.html)). Krypa needs no async across the FFI (command/event is callback-based), which sidesteps the gap. UniFFI does not directly support cancellation (V-doc [futures](https://mozilla.github.io/uniffi-rs/latest/futures.html)); another reason not to put async in the API.
+- UniFFI does not ship the library: "It does not help you ship the library to those platforms" (V-doc). Krypa builds `aarch64-apple-ios` and `aarch64-apple-ios-sim` static libraries and an xcframework itself (target names U, from general knowledge, not fetched).
+- swift-bridge is rejected: version 0.1.59, `Arc<T>` and Swift-to-Rust closures not implemented (V-doc [README](https://github.com/chinedufn/swift-bridge)).
+- The raw `CAMetalLayer` pointer cannot be a UniFFI type. Pass it as `u64` (`UInt64(UInt(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))`, Swift expression U) to one `attach_surface` method; Rust converts it with `unsafe`. The caller must keep the layer alive until `detach_surface`.
+- Panics across the FFI: not documented in the pages fetched. Whether UniFFI converts a Rust panic into a Swift error or aborts is **U**; do not pick a panic strategy (`panic = "abort"` or unwind) until this is known. It must be tested in the first FFI spike and the answer recorded.
+- Per-call cost of UniFFI marshalling for touch events at up to 120 Hz is **U**. Success criterion for the escape hatch: if `push_touch` + `frame` exceed a measured budget on a physical iPhone, move only those two to `extern "C"`.
+
+## 6. Build and tooling notes
+
+- Rust >= 1.95 (V-doc, egui 0.37.0 `rust_version`).
+- Workspace pins: `egui`/`egui-wgpu` = 0.37.0 must be bumped together (egui-wgpu requires `egui ^0.37.0` when its optional egui feature is on, V-doc crates.io dependencies); `wgpu ^30`. wgpu is a breaking-change-heavy crate (v29 and v30 each changed surface and instance API, V-doc CHANGELOG), so pin an exact patch version and upgrade deliberately.
+- Lockfile committed (guideline). iOS build requires macOS + Xcode; not possible on this Windows machine (PLAN.md section 0).
+
+## 7. Storage and privacy (item 7)
+
+- WebKit owns cookies, caches, local storage, IndexedDB, service worker registrations. Krypa must not open those files (the plan's rule).
+- Krypa SQLite keeps: profile id (UUID) + name, installed-app records, favorites, settings, history, permission decisions. A profile row references a `WKWebsiteDataStore` identifier; reconcile at startup against `fetchAllDataStoreIdentifiers` (V-doc API; reconciliation design U).
+- Installed apps are loaded from SQLite through `InstalledApp::from_stored` (krypa-apps), never trusted: it re-checks origin binding, scope containment, name sanitizing and https-only icons, and refuses non-canonical text. `Storage::get_app` and `Storage::list_installed_apps` (a page of apps plus the per-row `CorruptRow` errors; a bad row neither fails the page nor disappears silently) are the load API. `Origin::from_parts` (krypa-navigation) re-validates a stored origin the same way. Not persisted on `InstalledApp`: the install time (stored in `installed_apps.installed_at`, not exposed on the model). A shell loads the list at startup by looping on `InstalledAppsPage::next` and must surface `errors` (the desktop harness lists them in `Core::startup_problems` and its status line; it keeps the database in `KRYPA_HARNESS_DB` or the temp directory). Icon bytes are not stored (see section 4, App icons).
+- Private sessions: `nonPersistent()` store (V-doc) and no `interactionState` persisted (U) and no history rows.
+- Never log URLs with queries, titles or page content at info level (plan rule); `evaluateJavaScript` results are hostile strings.
+
+## 8. Accessibility architecture
+
+Chrome accessibility goes through AccessKit: egui `enable_accesskit()`, `PlatformOutput::accesskit_update`, `Event::AccessKitActionRequest`, and `accesskit_ios` `Adapter` on the Rust view (all V-doc, versions in IOS_INTEGRATION.md). Status: pieces exist; combination unverified, adapter is 0.2.x with partial coverage (V-doc README). Page content is accessible through WKWebView itself (U). This is a gating item for release, not an optional polish item (the user base includes VoiceOver users; legal obligations by jurisdiction were not researched, U).
+
+## 9. Changes this research implies for the plan
+
+1. PLAN.md section 1 item 5: one UniFFI surface; C ABI only as measured fallback.
+2. Item 4: size the Rust view to the chrome region where possible; the opaque-rect list stays for popups.
+3. Item 6: allow pure synchronous Rust functions for navigation/new-window policy.
+4. Add minimum iOS 17.0 (profiles) to section 0 constraints.
+5. Add `krypa-ios-ffi` to the workspace layout and scope the "no unsafe" rule.
+6. Add a non-code task now: apply for the default-browser entitlement (form on Apple Developer, V-doc), because approval is not guaranteed and gates service workers, passkeys and Add to Home Screen. Browser-eligibility criteria affect WP-5: the launch screen must offer a URL field, search or curated bookmarks (V-doc).
+7. WP-3 `EngineCapabilities` as in section 4; WP-2's manifest discovery uses `evaluateJavaScript` in a named content world, not a message handler (IOS_INTEGRATION.md 5.4).
+8. WP-6 exit criteria add: VoiceOver on chrome (pass/fail), IME composition (CJK) in the address bar, panic-across-FFI behaviour, UniFFI per-call cost, and checking `cargo tree` for single `accesskit` version.
+9. Do not add `WKAppBoundDomains` to Info.plist.
