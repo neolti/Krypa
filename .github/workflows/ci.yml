@@ -77,7 +77,7 @@ jobs:
           xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Krypa.app
           xcrun simctl spawn "$UDID" log stream --level debug --predicate 'process == "Krypa"' > artifacts/app-log.txt 2>&1 &
           sleep 2
-          xcrun simctl launch "$UDID" app.krypa.ios | tee artifacts/launch.txt
+          xcrun simctl launch --stdout="$PWD/artifacts/app-stdout.txt" --stderr="$PWD/artifacts/app-stderr.txt" "$UDID" app.krypa.ios | tee artifacts/launch.txt
           PID=$(awk -F': ' '{print $2}' artifacts/launch.txt)
           sleep 10
           if ! ps -p "$PID" > /dev/null; then
