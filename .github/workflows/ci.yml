@@ -39,3 +39,67 @@ jobs:
               -p krypa-navigation -p krypa-apps -p krypa-storage \
               -p krypa-engine-api -p krypa-core -p krypa-ui
           done
+
+  ios-app:
+    name: iOS app (build, boot in simulator, screenshot)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup target add aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ios-sim
+      - name: Build the Rust static library (simulator)
+        run: cargo build -p krypa-ios --release --target aarch64-apple-ios-sim
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd apps/ios && xcodegen generate
+      - name: Build the app (no code signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project apps/ios/Krypa.xcodeproj -scheme Krypa \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log
+      - name: Boot a simulator, launch, check it survives, take a screenshot
+        run: |
+          set -eu
+          mkdir -p artifacts
+          UDID=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name == "iPhone 16 Pro")][0].udid')
+          echo "simulator: $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Krypa.app
+          xcrun simctl spawn "$UDID" log stream --level debug --predicate 'process == "Krypa"' > artifacts/app-log.txt 2>&1 &
+          sleep 2
+          xcrun simctl launch "$UDID" app.krypa.ios | tee artifacts/launch.txt
+          PID=$(awk -F': ' '{print $2}' artifacts/launch.txt)
+          sleep 10
+          if ! ps -p "$PID" > /dev/null; then
+            echo "::error::the app is not running 10 seconds after launch (crashed?)"
+            exit 1
+          fi
+          xcrun simctl io "$UDID" screenshot artifacts/launcher.png
+          grep -q "krypa: view created" artifacts/app-log.txt || { echo "::error::no 'view created' line in the app log"; exit 1; }
+          if grep -q "krypa: .* failed" artifacts/app-log.txt; then echo "::error::Rust reported a failure"; exit 1; fi
+          # still alive after the screenshot
+          ps -p "$PID" > /dev/null
+      - name: Collect crash reports and system log on failure
+        if: failure()
+        run: |
+          mkdir -p artifacts
+          cp ~/Library/Logs/DiagnosticReports/Krypa* artifacts/ 2>/dev/null || true
+          xcrun simctl spawn booted log show --last 3m --predicate 'process == "Krypa"' > artifacts/log-show.txt 2>&1 || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ios-simulator
+          path: |
+            artifacts/
+            xcodebuild.log
+          if-no-files-found: warn
