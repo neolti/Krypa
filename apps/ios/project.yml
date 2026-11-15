@@ -1,0 +1,45 @@
+# XcodeGen spec; CI generates Krypa.xcodeproj from it (no .pbxproj is committed).
+# Run `xcodegen generate` in this folder on a Mac. See docs/adr/0002-ios-shell-c-abi.md.
+name: Krypa
+options:
+  bundleIdPrefix: app.krypa
+  deploymentTarget:
+    iOS: "17.0" # docs/IOS_INTEGRATION.md section 2: WKWebsiteDataStore(forIdentifier:) needs 17.
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+targets:
+  Krypa:
+    type: application
+    platform: iOS
+    sources:
+      - path: Krypa
+    info:
+      path: Krypa/Info.plist
+      properties:
+        CFBundleDisplayName: Krypa
+        # An empty launch screen makes iOS give the app the full screen instead of a
+        # letterboxed legacy size.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIApplicationSupportsIndirectInputEvents: true
+    settings:
+      base:
+        # PROVISIONAL identifier: no Apple Developer account or App ID exists yet.
+        PRODUCT_BUNDLE_IDENTIFIER: app.krypa.ios
+        SWIFT_OBJC_BRIDGING_HEADER: Krypa/Krypa-Bridging-Header.h
+        HEADER_SEARCH_PATHS: $(SRCROOT)/../../crates/krypa-ios/include
+        # CI and scripts build the static library first: cargo build -p krypa-ios --release
+        # --target aarch64-apple-ios-sim (or aarch64-apple-ios for a device).
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: $(SRCROOT)/../../target/aarch64-apple-ios-sim/release
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: $(SRCROOT)/../../target/aarch64-apple-ios/release
+        # A Rust staticlib does not tell Xcode which system frameworks it needs.
+        OTHER_LDFLAGS: -lkrypa_ios -lc++ -framework Metal -framework QuartzCore -framework CoreGraphics -framework Foundation -framework UIKit
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64

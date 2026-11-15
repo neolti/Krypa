@@ -6,3 +6,5 @@ xcuserdata/
 DerivedData/
 .gradle/
 local.properties
+/apps/ios/Krypa.xcodeproj/
+/apps/ios/Krypa/Info.plist

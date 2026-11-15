@@ -1,0 +1,37 @@
+[package]
+name = "krypa-ios"
+description = "Krypa iOS static library: a tiny C ABI that renders krypa-ui with egui and wgpu into a CAMetalLayer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+# staticlib is linked into the Xcode app; rlib lets `cargo test` run on any host.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+egui = { workspace = true, features = ["default_fonts"] }
+krypa-core = { path = "../krypa-core" }
+krypa-engine-api = { path = "../krypa-engine-api" }
+krypa-ui = { path = "../krypa-ui" }
+
+# GPU code only exists on Apple targets (a CAMetalLayer is the only surface it knows).
+# Everything else in the crate is plain Rust and is tested on every host.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+egui-wgpu = { version = "0.37.0", default-features = false }
+pollster = "0.4"
+wgpu = { version = "30.0.2", default-features = false, features = ["metal", "wgsl", "std", "parking_lot"] }
+
+# Not `[lints] workspace = true`: the workspace forbids unsafe code, and `forbid` cannot be
+# relaxed per module. This crate is the one place unsafe is allowed (the C ABI and the raw
+# CAMetalLayer pointer); lib.rs denies it everywhere except the two modules that need it.
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
