@@ -116,6 +116,7 @@ impl Rig {
             private_sessions: true,
             content_blocking: true,
             view_suspend: true,
+            manifest_fetch: true,
         }
     }
 
