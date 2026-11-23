@@ -14,7 +14,16 @@ crate-type = ["staticlib", "rlib"]
 egui = { workspace = true, features = ["default_fonts"] }
 krypa-core = { path = "../krypa-core" }
 krypa-engine-api = { path = "../krypa-engine-api" }
+krypa-navigation = { path = "../krypa-navigation" }
 krypa-ui = { path = "../krypa-ui" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+
+[features]
+# Test-only: adds `krypa_debug_open_url` to the C ABI so CI can open a start URL without a
+# keyboard. Never enabled for release builds (see docs/adr/0003-webview-adapter-boundary.md).
+debug-start-url = []
 
 # GPU code only exists on Apple targets (a CAMetalLayer is the only surface it knows).
 # Everything else in the crate is plain Rust and is tested on every host.

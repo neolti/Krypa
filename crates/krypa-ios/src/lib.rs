@@ -13,7 +13,10 @@
 pub mod app;
 pub mod geometry;
 pub mod input;
+pub mod placement;
+pub mod security;
 pub mod view;
+pub mod wire;
 
 #[allow(unsafe_code)]
 pub mod ffi;

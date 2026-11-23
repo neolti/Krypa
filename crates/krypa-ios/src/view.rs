@@ -105,9 +105,14 @@ impl View {
         })
     }
 
-    /// The app logic, for tests.
+    /// The app logic.
     #[must_use]
     pub fn app(&self) -> &App {
         &self.app
+    }
+
+    /// The app logic, mutable (adapter events, navigation questions, command queue).
+    pub fn app_mut(&mut self) -> &mut App {
+        &mut self.app
     }
 }

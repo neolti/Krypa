@@ -1524,8 +1524,12 @@ dependencies = [
  "egui-wgpu",
  "krypa-core",
  "krypa-engine-api",
+ "krypa-navigation",
  "krypa-ui",
  "pollster",
+ "serde",
+ "serde_json",
+ "url",
  "wgpu",
 ]
 
