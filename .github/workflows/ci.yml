@@ -52,26 +52,48 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: ios-sim
-      - name: Build the Rust static library (simulator)
-        run: cargo build -p krypa-ios --release --target aarch64-apple-ios-sim
-      - name: Generate the Xcode project
+      - name: Release configuration must not contain the test hook
         run: |
+          set -eu
+          # Library WITHOUT the debug-start-url feature, app in the Release configuration.
+          cargo build -p krypa-ios --release --target aarch64-apple-ios-sim
+          if nm -g target/aarch64-apple-ios-sim/release/libkrypa_ios.a 2>/dev/null | grep -q krypa_debug_open_url; then
+            echo "::error::krypa_debug_open_url is in the release library"; exit 1
+          fi
           brew install xcodegen
-          cd apps/ios && xcodegen generate
-      - name: Build the app (no code signing)
+          (cd apps/ios && xcodegen generate)
+          set -o pipefail
+          xcodebuild -project apps/ios/Krypa.xcodeproj -scheme Krypa             -configuration Release -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator'             -derivedDataPath build-release ARCHS=arm64 ONLY_ACTIVE_ARCH=YES             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild-release.log
+          BIN=build-release/Build/Products/Release-iphonesimulator/Krypa.app/Krypa
+          strings "$BIN" > release-strings.txt
+          for needle in KrypaStartURL krypa-ci krypa_debug_open_url; do
+            if grep -q "$needle" release-strings.txt; then
+              echo "::error::'$needle' found in the Release binary"; exit 1
+            fi
+          done
+          echo "release binary has no debug start-URL hook"
+      - name: Build the Rust static library with the test hook (Debug configuration only)
+        run: cargo build -p krypa-ios --release --target aarch64-apple-ios-sim --features debug-start-url
+      - name: Build the app (Debug, no code signing)
         run: |
           set -o pipefail
-          xcodebuild -project apps/ios/Krypa.xcodeproj -scheme Krypa \
-            -configuration Debug -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
-            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log
-      - name: Boot a simulator, launch, check it survives, take a screenshot
+          xcodebuild -project apps/ios/Krypa.xcodeproj -scheme Krypa             -configuration Debug -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator'             -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log
+      - name: Start the local fixture servers (http on 8080, self-signed https on 8443)
+        run: |
+          set -eu
+          (cd tests/web-fixtures && nohup python3 -m http.server 8080 --bind 127.0.0.1 > ../../fixture-http.log 2>&1 &)
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout key.pem -out cert.pem             -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1" 2>/dev/null
+          nohup python3 .github/scripts/tls_server.py 8443 cert.pem key.pem tests/web-fixtures > fixture-tls.log 2>&1 &
+          sleep 2
+          curl -sf http://127.0.0.1:8080/basic/ > /dev/null
+          curl -skf https://127.0.0.1:8443/basic/ > /dev/null
+      - name: Boot a simulator, launch the launcher, check it survives, take a screenshot
         run: |
           set -eu
           mkdir -p artifacts
           UDID=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name == "iPhone 16 Pro")][0].udid')
           echo "simulator: $UDID"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Krypa.app
@@ -87,8 +109,9 @@ jobs:
           xcrun simctl io "$UDID" screenshot artifacts/launcher.png
           grep -q "krypa: view created" artifacts/app-log.txt || { echo "::error::no 'view created' line in the app log"; exit 1; }
           if grep -q "krypa: .* failed" artifacts/app-log.txt; then echo "::error::Rust reported a failure"; exit 1; fi
-          # still alive after the screenshot
           ps -p "$PID" > /dev/null
+      - name: Web content scenarios (http, certificate error, https) with screenshots
+        run: .github/scripts/ios-sim-scenarios.sh
       - name: Collect crash reports and system log on failure
         if: failure()
         run: |
@@ -102,4 +125,7 @@ jobs:
           path: |
             artifacts/
             xcodebuild.log
+            xcodebuild-release.log
+            fixture-http.log
+            fixture-tls.log
           if-no-files-found: warn

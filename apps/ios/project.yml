@@ -30,6 +30,12 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSupportsIndirectInputEvents: true
+        # A browser must load the http pages its user navigates to. This key lifts ATS for
+        # web views only; the app's own networking (URLSession) stays under ATS. It is the
+        # narrowest key that does the job: NSAllowsLocalNetworking would not allow http to
+        # public hosts, per-domain exceptions cannot list "every site".
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
     settings:
       base:
         # PROVISIONAL identifier: no Apple Developer account or App ID exists yet.
@@ -41,5 +47,12 @@ targets:
         LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: $(SRCROOT)/../../target/aarch64-apple-ios-sim/release
         LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: $(SRCROOT)/../../target/aarch64-apple-ios/release
         # A Rust staticlib does not tell Xcode which system frameworks it needs.
-        OTHER_LDFLAGS: -lkrypa_ios -lc++ -framework Metal -framework QuartzCore -framework CoreGraphics -framework Foundation -framework UIKit
+        OTHER_LDFLAGS: -lkrypa_ios -lc++ -framework Metal -framework QuartzCore -framework CoreGraphics -framework Foundation -framework UIKit -framework WebKit -framework Security
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+      configs:
+        Debug:
+          # TEST ONLY. Debug configuration only: lets CI open a start URL (-KrypaStartURL)
+          # and print markers. The Rust library must be built with the `debug-start-url`
+          # feature for this configuration; Release has neither the flag nor the symbol.
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG KRYPA_DEBUG_START_URL
+          OTHER_SWIFT_FLAGS: -Xcc -DKRYPA_DEBUG_START_URL
