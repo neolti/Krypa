@@ -65,7 +65,10 @@ pub(super) fn show(
 
     let already_added =
         session_url(&info).is_some_and(|u| state.installed_apps.iter().any(|a| a.is_in_scope(u)));
-    let installable = session_url(&info).is_some() && info.state.has_live_view();
+    // An engine that cannot fetch the manifest never answers "Add to Krypa": not offered.
+    let installable = state.capabilities.manifest_fetch
+        && session_url(&info).is_some()
+        && info.state.has_live_view();
     let bottom = Panel::bottom("krypa-chrome-bottom")
         .frame(Frame::new().fill(t.surface).inner_margin(Margin {
             left: 8,

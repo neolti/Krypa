@@ -102,6 +102,9 @@ pub struct EngineCapabilities {
     /// The platform offers a real way to suspend a web view's execution. When `false`,
     /// `Suspend`/`Resume` are never sent and nothing may be assumed to be paused.
     pub view_suspend: bool,
+    /// The adapter answers `EngineCommand::FetchManifest`. When `false` the UI must not
+    /// offer "Add to Krypa" (nothing would ever answer the request).
+    pub manifest_fetch: bool,
 }
 
 /// Which frame a navigation targets.
@@ -482,6 +485,7 @@ mod tests {
         assert!(caps.passkeys);
         assert!(!caps.service_workers);
         assert!(!caps.view_suspend);
+        assert!(!caps.manifest_fetch);
         assert_eq!(
             serde_json::from_str::<EngineCapabilities>("{}").unwrap(),
             EngineCapabilities::default()

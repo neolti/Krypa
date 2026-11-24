@@ -208,6 +208,7 @@ fn browser_state(info: SessionInfo) -> AppState {
     s.foreground = Some(info.id);
     s.sessions = vec![info];
     s.screen = Screen::Browser;
+    s.capabilities.manifest_fetch = true;
     s
 }
 
@@ -510,6 +511,23 @@ fn add_to_krypa_is_offered_until_the_page_is_inside_an_installed_app() {
     let mut h = Harness::new(state);
     assert!(!h.has_text(strings::ADD_TO_KRYPA));
     h.click(strings::ALREADY_ADDED);
+    assert!(h.take_intents().is_empty());
+}
+
+/// Why: an engine that cannot fetch manifests would leave "Add to Krypa" waiting for an
+/// answer that never comes, so the UI must not offer it (the iOS adapter says so today).
+#[test]
+fn add_to_krypa_is_not_offered_when_the_engine_cannot_fetch_manifests() {
+    let info = session(
+        3,
+        SessionState::Foreground,
+        "https://shop.example/cart",
+        None,
+    );
+    let mut state = browser_state(info);
+    state.capabilities.manifest_fetch = false;
+    let mut h = Harness::new(state);
+    h.click(strings::ADD_TO_KRYPA);
     assert!(h.take_intents().is_empty());
 }
 

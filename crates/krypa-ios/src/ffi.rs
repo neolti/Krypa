@@ -18,9 +18,14 @@
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
+use krypa_engine_api::{NavigationKind, NavigationRequest, NavigationTarget, SessionId};
+use url::Url;
+
+use crate::app::NavDecision;
 use crate::geometry::{Insets, Viewport};
 use crate::input::Phase;
 use crate::view::{Next, View, ViewError};
+use crate::wire::{command_to_json, HostEvent, MAX_EVENT_BYTES};
 
 /// Success.
 pub const KRYPA_OK: i32 = 0;
@@ -34,6 +39,38 @@ pub const KRYPA_ERR_GPU: i32 = 3;
 pub const KRYPA_ERR_PANIC: i32 = 4;
 /// This build cannot draw (not an Apple target).
 pub const KRYPA_ERR_UNSUPPORTED: i32 = 5;
+
+/// The core refused an event (stale or unknown session, or not valid in the session state).
+/// Not a bug in the caller: late events from a dying web view are normal. Ignore and go on.
+pub const KRYPA_ERR_REJECTED: i32 = 6;
+/// The output buffer is too small; `*out_len` holds the size needed. Nothing was consumed.
+pub const KRYPA_ERR_BUFFER_TOO_SMALL: i32 = 7;
+
+/// Largest event or URL the adapter may send, in bytes.
+pub const KRYPA_MAX_EVENT_BYTES: usize = MAX_EVENT_BYTES;
+
+/// Navigation answer: let the web view navigate.
+pub const KRYPA_NAV_ALLOW: u32 = 0;
+/// Navigation answer: refuse. Also what every error leaves behind (fail closed).
+pub const KRYPA_NAV_CANCEL: u32 = 1;
+
+/// Navigation target: the main frame.
+pub const KRYPA_NAV_TARGET_MAIN: u32 = 0;
+/// Navigation target: an embedded frame.
+pub const KRYPA_NAV_TARGET_SUB: u32 = 1;
+/// Navigation target: a new window (`window.open`, `target=_blank`).
+pub const KRYPA_NAV_TARGET_NEW_WINDOW: u32 = 2;
+
+/// Navigation kind: link activated.
+pub const KRYPA_NAV_KIND_LINK: u32 = 0;
+/// Navigation kind: form submitted.
+pub const KRYPA_NAV_KIND_FORM: u32 = 1;
+/// Navigation kind: reload.
+pub const KRYPA_NAV_KIND_RELOAD: u32 = 2;
+/// Navigation kind: back or forward.
+pub const KRYPA_NAV_KIND_BACK_FORWARD: u32 = 3;
+/// Navigation kind: anything else.
+pub const KRYPA_NAV_KIND_OTHER: u32 = 4;
 
 /// `UITouch.Phase.began`.
 pub const KRYPA_TOUCH_BEGAN: u32 = 0;
@@ -59,6 +96,22 @@ pub struct KrypaInsets {
     pub bottom: f32,
     /// Right.
     pub right: f32,
+}
+
+/// Where the web view goes, in points in the Metal view's coordinates.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KrypaPlacement {
+    /// Session whose web view is shown; 0 (never issued) means none: remove every web view.
+    pub session: u64,
+    /// Left.
+    pub x: f32,
+    /// Top.
+    pub y: f32,
+    /// Width.
+    pub width: f32,
+    /// Height.
+    pub height: f32,
 }
 
 /// Opaque handle owned by the shell between `krypa_view_create` and `krypa_view_destroy`.
@@ -288,6 +341,230 @@ pub unsafe extern "C" fn krypa_view_render(
     }
 }
 
+/// Hands one event from the web-view adapter to the core: UTF-8 JSON of a `HostEvent`
+/// (`wire.rs`), at most `KRYPA_MAX_EVENT_BYTES` long. Returns `KRYPA_ERR_INVALID_ARG` for
+/// anything malformed (nothing changed) and `KRYPA_ERR_REJECTED` when the core refused it.
+///
+/// # Safety
+/// `view` must be null or a live handle (see [`krypa_view_destroy`]); `json` must be null or
+/// valid for reading `len` bytes for the duration of the call.
+#[no_mangle]
+pub unsafe extern "C" fn krypa_view_push_event(
+    view: *mut KrypaView,
+    json: *const u8,
+    len: usize,
+) -> i32 {
+    if json.is_null() {
+        return KRYPA_ERR_NULL;
+    }
+    if len == 0 || len > MAX_EVENT_BYTES {
+        return KRYPA_ERR_INVALID_ARG;
+    }
+    // SAFETY: non-null, and the caller guarantees `len` readable bytes; `len` is bounded.
+    let bytes = unsafe { std::slice::from_raw_parts(json, len) };
+    // SAFETY: forwarded from this function's contract.
+    unsafe {
+        with_view(view, |v| match HostEvent::parse(bytes) {
+            Err(_) => KRYPA_ERR_INVALID_ARG,
+            Ok(event) => match v.app_mut().push_host_event(event) {
+                Ok(()) => KRYPA_OK,
+                Err(_) => KRYPA_ERR_REJECTED,
+            },
+        })
+    }
+}
+
+/// Pulls the next command for the adapter as UTF-8 JSON of an `EngineCommand`. `*out_len` is
+/// set to the byte count (written, or needed); 0 with `KRYPA_OK` means the queue is empty.
+/// If `buf` is null or `cap` is too small the result is `KRYPA_ERR_BUFFER_TOO_SMALL` and the
+/// command stays queued.
+///
+/// # Safety
+/// `view` must be null or a live handle; `out_len` must be null or writable; `buf` must be
+/// null or valid for writing `cap` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn krypa_view_next_command(
+    view: *mut KrypaView,
+    buf: *mut u8,
+    cap: usize,
+    out_len: *mut usize,
+) -> i32 {
+    if out_len.is_null() {
+        return KRYPA_ERR_NULL;
+    }
+    // SAFETY: checked non-null; writable by contract.
+    unsafe { *out_len = 0 };
+    // SAFETY: forwarded from this function's contract.
+    unsafe {
+        with_view(view, |v| {
+            let Some(command) = v.app().peek_command() else {
+                return KRYPA_OK;
+            };
+            let Ok(json) = command_to_json(command) else {
+                // Cannot happen for contract types; drop it rather than wedge the queue.
+                let _ = v.app_mut().next_command();
+                return KRYPA_ERR_INVALID_ARG;
+            };
+            // SAFETY: `out_len` was checked non-null above and is writable by contract.
+            *out_len = json.len();
+            if buf.is_null() || cap < json.len() {
+                return KRYPA_ERR_BUFFER_TOO_SMALL;
+            }
+            // SAFETY: `buf` is valid for `cap >= json.len()` bytes by contract and cannot
+            // overlap the freshly allocated `json`.
+            std::ptr::copy_nonoverlapping(json.as_ptr(), buf, json.len());
+            let _ = v.app_mut().next_command();
+            KRYPA_OK
+        })
+    }
+}
+
+/// Asks whether the web view may perform a navigation. `*out_decision` is set to
+/// `KRYPA_NAV_CANCEL` first and stays so on every error: the web view must cancel unless
+/// the call returned `KRYPA_OK` with `KRYPA_NAV_ALLOW`. Side effects (external-link prompt,
+/// new session for a new window) happen inside; Swift only acts on the answer.
+///
+/// # Safety
+/// `view` must be null or a live handle; `url` null or valid for `url_len` bytes;
+/// `out_decision` null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn krypa_view_decide_navigation(
+    view: *mut KrypaView,
+    session: u64,
+    url: *const u8,
+    url_len: usize,
+    target: u32,
+    kind: u32,
+    user_gesture: u32,
+    out_decision: *mut u32,
+) -> i32 {
+    if out_decision.is_null() {
+        return KRYPA_ERR_NULL;
+    }
+    // SAFETY: checked non-null; writable by contract.
+    unsafe { *out_decision = KRYPA_NAV_CANCEL };
+    if url.is_null() {
+        return KRYPA_ERR_NULL;
+    }
+    let target = match target {
+        KRYPA_NAV_TARGET_MAIN => NavigationTarget::MainFrame,
+        KRYPA_NAV_TARGET_SUB => NavigationTarget::SubFrame,
+        KRYPA_NAV_TARGET_NEW_WINDOW => NavigationTarget::NewWindow,
+        _ => return KRYPA_ERR_INVALID_ARG,
+    };
+    let kind = match kind {
+        KRYPA_NAV_KIND_LINK => NavigationKind::LinkActivated,
+        KRYPA_NAV_KIND_FORM => NavigationKind::FormSubmitted,
+        KRYPA_NAV_KIND_RELOAD => NavigationKind::Reload,
+        KRYPA_NAV_KIND_BACK_FORWARD => NavigationKind::BackForward,
+        KRYPA_NAV_KIND_OTHER => NavigationKind::Other,
+        _ => return KRYPA_ERR_INVALID_ARG,
+    };
+    if user_gesture > 1 || url_len == 0 || url_len > MAX_EVENT_BYTES {
+        return KRYPA_ERR_INVALID_ARG;
+    }
+    // SAFETY: non-null, `url_len` readable bytes by contract and bounded above.
+    let bytes = unsafe { std::slice::from_raw_parts(url, url_len) };
+    let Some(parsed) = std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|t| Url::parse(t).ok())
+    else {
+        return KRYPA_ERR_INVALID_ARG;
+    };
+    let request = NavigationRequest {
+        url: parsed,
+        target,
+        kind,
+        user_gesture: user_gesture == 1,
+    };
+    // SAFETY: forwarded from this function's contract.
+    unsafe {
+        with_view(view, |v| {
+            let answer = v
+                .app_mut()
+                .decide_navigation(SessionId::new(session), &request);
+            if answer == NavDecision::Allow {
+                // SAFETY: `out_decision` was checked non-null above and is writable.
+                *out_decision = KRYPA_NAV_ALLOW;
+            }
+            KRYPA_OK
+        })
+    }
+}
+
+/// Writes where the web view goes after the last frame. `session == 0` means no web view
+/// is to be on screen.
+///
+/// # Safety
+/// `view` must be null or a live handle; `out` must be null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn krypa_view_web_placement(
+    view: *mut KrypaView,
+    out: *mut KrypaPlacement,
+) -> i32 {
+    if out.is_null() {
+        return KRYPA_ERR_NULL;
+    }
+    let none = KrypaPlacement {
+        session: 0,
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    };
+    // SAFETY: checked non-null; writable by contract.
+    unsafe { *out = none };
+    // SAFETY: forwarded from this function's contract.
+    unsafe {
+        with_view(view, |v| {
+            let p = v.app().placement();
+            if let Some(session) = p.session {
+                // SAFETY: `out` was checked non-null above and is writable.
+                *out = KrypaPlacement {
+                    session: session.get(),
+                    x: p.rect.min.x,
+                    y: p.rect.min.y,
+                    width: p.rect.width(),
+                    height: p.rect.height(),
+                };
+            }
+            KRYPA_OK
+        })
+    }
+}
+
+/// TEST ONLY (feature `debug-start-url`, absent from release builds): opens `url` as if the
+/// user had typed it in the launcher.
+///
+/// # Safety
+/// `view` must be null or a live handle; `url` null or valid for `len` bytes.
+#[cfg(feature = "debug-start-url")]
+#[no_mangle]
+pub unsafe extern "C" fn krypa_debug_open_url(
+    view: *mut KrypaView,
+    url: *const u8,
+    len: usize,
+) -> i32 {
+    if url.is_null() {
+        return KRYPA_ERR_NULL;
+    }
+    if len == 0 || len > MAX_EVENT_BYTES {
+        return KRYPA_ERR_INVALID_ARG;
+    }
+    // SAFETY: non-null, `len` readable bytes by contract and bounded above.
+    let bytes = unsafe { std::slice::from_raw_parts(url, len) };
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return KRYPA_ERR_INVALID_ARG;
+    };
+    // SAFETY: forwarded from this function's contract.
+    unsafe {
+        with_view(view, |v| match v.app_mut().debug_open_url(text) {
+            Ok(()) => KRYPA_OK,
+            Err(_) => KRYPA_ERR_INVALID_ARG,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,13 +734,42 @@ mod tests {
             "krypa_view_resize",
             "krypa_view_touch",
             "krypa_view_render",
+            "krypa_view_push_event",
+            "krypa_view_next_command",
+            "krypa_view_decide_navigation",
+            "krypa_view_web_placement",
         ] {
             assert!(
                 header.contains(&format!("{name}(")),
                 "{name} missing from header"
             );
         }
-        let constants: [(&str, i64); 11] = [
+        let constants: [(&str, i64); 24] = [
+            ("KRYPA_ERR_REJECTED", KRYPA_ERR_REJECTED.into()),
+            (
+                "KRYPA_ERR_BUFFER_TOO_SMALL",
+                KRYPA_ERR_BUFFER_TOO_SMALL.into(),
+            ),
+            ("KRYPA_NAV_ALLOW", KRYPA_NAV_ALLOW.into()),
+            ("KRYPA_NAV_CANCEL", KRYPA_NAV_CANCEL.into()),
+            ("KRYPA_NAV_TARGET_MAIN", KRYPA_NAV_TARGET_MAIN.into()),
+            ("KRYPA_NAV_TARGET_SUB", KRYPA_NAV_TARGET_SUB.into()),
+            (
+                "KRYPA_NAV_TARGET_NEW_WINDOW",
+                KRYPA_NAV_TARGET_NEW_WINDOW.into(),
+            ),
+            ("KRYPA_NAV_KIND_LINK", KRYPA_NAV_KIND_LINK.into()),
+            ("KRYPA_NAV_KIND_FORM", KRYPA_NAV_KIND_FORM.into()),
+            ("KRYPA_NAV_KIND_RELOAD", KRYPA_NAV_KIND_RELOAD.into()),
+            (
+                "KRYPA_NAV_KIND_BACK_FORWARD",
+                KRYPA_NAV_KIND_BACK_FORWARD.into(),
+            ),
+            ("KRYPA_NAV_KIND_OTHER", KRYPA_NAV_KIND_OTHER.into()),
+            (
+                "KRYPA_MAX_EVENT_BYTES",
+                i64::try_from(KRYPA_MAX_EVENT_BYTES).unwrap(),
+            ),
             ("KRYPA_OK", KRYPA_OK.into()),
             ("KRYPA_ERR_NULL", KRYPA_ERR_NULL.into()),
             ("KRYPA_ERR_INVALID_ARG", KRYPA_ERR_INVALID_ARG.into()),
@@ -485,5 +791,209 @@ mod tests {
             );
         }
         let _ = null::<u8>();
+    }
+
+    /// Why: a release build must not contain the URL-opening hook, so the header may only
+    /// mention it inside the opt-in macro block.
+    #[test]
+    fn the_debug_hook_is_declared_only_inside_its_opt_in_block() {
+        let header = include_str!("../include/krypa_ios.h");
+        let start = header.find("#ifdef KRYPA_DEBUG_START_URL").unwrap();
+        let end = start + header[start..].find("#endif").unwrap();
+        assert!(header[start..end].contains("krypa_debug_open_url("));
+        assert_eq!(header.matches("krypa_debug_open_url").count(), 1);
+    }
+
+    fn push(view: *mut KrypaView, json: &str) -> i32 {
+        // SAFETY: `view` is a live handle (or null on purpose); the slice outlives the call.
+        unsafe { krypa_view_push_event(view, json.as_ptr(), json.len()) }
+    }
+
+    fn pull(view: *mut KrypaView) -> Option<String> {
+        let mut buf = vec![0u8; 4096];
+        let mut len = 0usize;
+        // SAFETY: `view` is live, `buf` has 4096 writable bytes, `len` is writable.
+        let status =
+            unsafe { krypa_view_next_command(view, buf.as_mut_ptr(), buf.len(), &mut len) };
+        assert_eq!(status, KRYPA_OK);
+        (len > 0).then(|| String::from_utf8(buf[..len].to_vec()).unwrap())
+    }
+
+    fn open(view: *mut KrypaView, url: &str) {
+        // The same path the UI takes: an intent executed by the app.
+        // SAFETY: `view` is a live handle used from one thread.
+        let app = unsafe { (*view).view.app_mut() };
+        app.execute_intents(vec![krypa_ui::Intent::Navigate(
+            krypa_navigation::NavigationUrl::parse(url).unwrap(),
+        )]);
+    }
+
+    #[test]
+    fn commands_come_out_as_json_in_order_and_an_empty_queue_is_ok_with_zero_length() {
+        let view = headless_handle();
+        open(view, "https://example.com/");
+        let first = pull(view).unwrap();
+        assert!(first.starts_with(r#"{"CreateSession":{"session":1,"profile":"Default""#));
+        assert_eq!(pull(view).unwrap(), r#"{"Show":{"session":1}}"#);
+        assert_eq!(pull(view), None);
+        // SAFETY: live handle.
+        unsafe { krypa_view_destroy(view) };
+    }
+
+    #[test]
+    fn a_too_small_buffer_reports_the_size_and_keeps_the_command() {
+        let view = headless_handle();
+        open(view, "https://example.com/");
+        let mut len = 0usize;
+        let mut tiny = [0u8; 4];
+        // SAFETY: live handle, writable buffer and length.
+        unsafe {
+            assert_eq!(
+                krypa_view_next_command(view, tiny.as_mut_ptr(), tiny.len(), &mut len),
+                KRYPA_ERR_BUFFER_TOO_SMALL
+            );
+            assert!(len > 4);
+            assert_eq!(
+                krypa_view_next_command(view, null_mut(), 0, &mut len),
+                KRYPA_ERR_BUFFER_TOO_SMALL
+            );
+            krypa_view_destroy(view);
+        }
+        // Nothing was consumed by the two failed pulls.
+    }
+
+    #[test]
+    fn a_failed_pull_does_not_consume_the_command() {
+        let view = headless_handle();
+        open(view, "https://example.com/");
+        let mut len = 0usize;
+        // SAFETY: live handle, null buffer is allowed.
+        let status = unsafe { krypa_view_next_command(view, null_mut(), 0, &mut len) };
+        assert_eq!(status, KRYPA_ERR_BUFFER_TOO_SMALL);
+        assert!(pull(view).is_some());
+        // SAFETY: live handle.
+        unsafe { krypa_view_destroy(view) };
+    }
+
+    #[test]
+    fn hostile_event_bytes_are_refused_without_a_crash_and_change_nothing() {
+        let view = headless_handle();
+        open(view, "https://example.com/");
+        let bad: [&[u8]; 4] = [b"{", &[0xFF, 0xFE], b"null", br#"{"Nope":{}}"#];
+        // SAFETY: live handle; pointers and lengths match the slices.
+        unsafe {
+            for b in bad {
+                assert_eq!(
+                    krypa_view_push_event(view, b.as_ptr(), b.len()),
+                    KRYPA_ERR_INVALID_ARG
+                );
+            }
+            assert_eq!(
+                krypa_view_push_event(view, b"x".as_ptr(), 0),
+                KRYPA_ERR_INVALID_ARG
+            );
+            assert_eq!(
+                krypa_view_push_event(view, b"x".as_ptr(), KRYPA_MAX_EVENT_BYTES + 1),
+                KRYPA_ERR_INVALID_ARG
+            );
+            assert_eq!(krypa_view_push_event(view, null(), 5), KRYPA_ERR_NULL);
+            assert_eq!(
+                krypa_view_push_event(null_mut(), b"x".as_ptr(), 1),
+                KRYPA_ERR_NULL
+            );
+            krypa_view_destroy(view);
+        }
+    }
+
+    #[test]
+    fn events_for_an_unknown_session_are_rejected_not_fatal() {
+        let view = headless_handle();
+        open(view, "https://example.com/");
+        let status = push(view, r#"{"Title":{"session":77,"title":"x"}}"#);
+        assert_eq!(status, KRYPA_ERR_REJECTED);
+        // The handle still works afterwards.
+        assert_eq!(
+            push(view, r#"{"Title":{"session":1,"title":"ok"}}"#),
+            KRYPA_OK
+        );
+        // SAFETY: live handle.
+        unsafe { krypa_view_destroy(view) };
+    }
+
+    /// Why: every error path of the navigation question must leave `Cancel` behind, so a
+    /// bug or hostile input can never turn into "allowed".
+    #[test]
+    fn navigation_questions_fail_closed() {
+        let view = headless_handle();
+        open(view, "https://example.com/");
+        let url = b"https://example.com/next";
+        let mut d = KRYPA_NAV_ALLOW;
+        // SAFETY: live handle; pointers match the slices; `d` is writable.
+        unsafe {
+            let ask = |view, session, url: &[u8], target, kind, gesture, d: &mut u32| {
+                krypa_view_decide_navigation(
+                    view,
+                    session,
+                    url.as_ptr(),
+                    url.len(),
+                    target,
+                    kind,
+                    gesture,
+                    d,
+                )
+            };
+            assert_eq!(ask(view, 1, url, 0, 0, 0, &mut d), KRYPA_OK);
+            assert_eq!(d, KRYPA_NAV_ALLOW);
+            for (session, u, target, kind, gesture) in [
+                (1u64, &url[..], 9u32, 0u32, 0u32),
+                (1, url, 0, 9, 0),
+                (1, url, 0, 0, 2),
+                (1, b"not a url", 0, 0, 0),
+                (1, &[0xFF, 0xFE][..], 0, 0, 0),
+                (1, b"javascript:alert(1)", 0, 0, 1),
+                (99, url, 0, 0, 0),
+            ] {
+                d = KRYPA_NAV_ALLOW;
+                let status = ask(view, session, u, target, kind, gesture, &mut d);
+                assert_eq!(d, KRYPA_NAV_CANCEL, "{status}");
+            }
+            d = KRYPA_NAV_ALLOW;
+            assert_eq!(
+                krypa_view_decide_navigation(view, 1, null(), 3, 0, 0, 0, &mut d),
+                KRYPA_ERR_NULL
+            );
+            assert_eq!(d, KRYPA_NAV_CANCEL);
+            krypa_view_destroy(view);
+        }
+    }
+
+    #[test]
+    fn the_placement_is_written_once_a_page_is_on_screen() {
+        let view = headless_handle();
+        let mut p = KrypaPlacement {
+            session: 9,
+            x: 1.0,
+            y: 1.0,
+            width: 1.0,
+            height: 1.0,
+        };
+        // SAFETY: live handle; `p` is writable.
+        unsafe {
+            assert_eq!(krypa_view_web_placement(view, &mut p), KRYPA_OK);
+            assert_eq!(p.session, 0, "no page: no web view");
+            open(view, "https://example.com/");
+            let mut ms = 0;
+            for i in 0..6 {
+                assert_eq!(
+                    krypa_view_render(view, f64::from(i) * 0.016, &mut ms),
+                    KRYPA_OK
+                );
+            }
+            assert_eq!(krypa_view_web_placement(view, &mut p), KRYPA_OK);
+            assert_eq!(p.session, 1);
+            assert!(p.y > 59.0 && p.y + p.height < 852.0 - 34.0);
+            assert_eq!(krypa_view_web_placement(view, null_mut()), KRYPA_ERR_NULL);
+            krypa_view_destroy(view);
+        }
     }
 }

@@ -62,6 +62,7 @@ impl Core {
             private_sessions: true,
             content_blocking: false,
             view_suspend: false,
+            manifest_fetch: true,
         };
         let config = ManagerConfig::new(LIVE_VIEW_BUDGET)?;
         let manager = SessionManager::new(config, capabilities);
